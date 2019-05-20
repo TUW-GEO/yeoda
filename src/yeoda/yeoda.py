@@ -78,8 +78,8 @@ class eoDataCube(object):
         Adds a new dimension to the datacube.
         :param name: str
             Name of the new dimension
-        :param values:
-            values of the new dimension (e.g., cloud cover, quality flag, ...).
+        :param values: list
+            Values of the new dimension (e.g., cloud cover, quality flag, ...).
             They have to have the same length as all the rows in the inventory.
         :return: eoDataCube
         """
@@ -202,6 +202,21 @@ def match_dimension(dc_1, dc_2, name):
     :return:
     """
 
+def merge_dcs(dc_1, dc_2, name=None, values=None):
+    """
+    Merges two datacubes in one datacube. By doing so, duplicates are removed.
+    If 'name' and 'values' are given, the datacubes are merged over a new dimension.
+    :param dc_1: eoDataCube
+        First datacube.
+    :param dc_2: eoDataCube
+        Second datacube.
+    :param name: str [optional]
+        Name of the new dimension
+    :param values: list [optional]
+        Values of the new dimension (e.g., cloud cover, quality flag, ...).
+        They have to have the same length as all the rows in the inventory.
+    :return:
+    """
 
 
 # class eoDataSystem(object):

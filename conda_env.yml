@@ -1,0 +1,10 @@
+name: yeoda
+channels:
+  - conda-forge
+dependencies:
+  - regex
+  - netCDF4
+  - geopandas
+  - xarray
+  - pip:
+    - pytileproj==0.0.9

@@ -1,63 +1,138 @@
 import copy
-import pyraster
-import pandas as pd
-from geopathfinder.file_naming import create_smart_filename
+import os
+import geopandas as geopd
+from geopandas import GeoSeries, GeoDataFrame
+import pytileproj.geometry as geometry
+from osgeo import osr
+
+from pyraster.geotiff import GeoTiffFile
+from pyraster.netcdf import NcFile
+from pyraster.gdalport import GdalImage
+from shapely.wkt import loads
 
 # TODO: handle file extensions correctly
 # TODO: synchronise filepaths with inventory
+# TODO: include exceptions
 class eoDataCube(object):
     """
     A filename based data cube.
     """
-    def __init__(self, grid, filepaths, filename_def, pad="-", delim="_", dimensions=None, inventory=None):
+    def __init__(self, filepaths=None, grid=None, dir_tree=None, create_smart_filename=None, dimensions=None,
+                 inventory=None):
         """
         Constructor of the eoDataCube class.
-        :param grid: object,
-            Grid object/class (e.g. Equi7Grid).
-        :param filepaths: list
-            List of filepaths or filenames
-        :param filename_def: OrderedDict
-            Name of fields (keys) in right order and length (values).
-        :param pad: str [optional]
-            Padding used in the filenames.
-        :param delim: str [optional]
-            Delimiter used in the filenames.
-        :param dimensions: list [optional]
-            List of filename parts to use as dimensions. The strings have to match with the keys in 'filename_def'.
-        :param inventory: Pandas DataFrame [optional]
-            contains information about the dimensions (columns) and each filename (rows)
+
+        Parameters
+        ----------
+        filepaths: list of str, optional
+            List of filepaths.
+        grid: optional
+            Grid object/class (e.g. Equi7Grid, LatLonGrid).
+        dir_tree: SmartTree, optional
+            Folder tree class managing folders and files.
+        create_smart_filename: function, optional
+            A function that allows to create a SmartFilename instance from a filepath.
+        dimensions: list of str, optional
+            List of filename parts to use as dimensions. The strings have to match with the keys of the SmartFilename
+            fields definition.
+        inventory: GeoDataFrame, optional
+            Contains information about the dimensions (columns) and each filename (rows).
+            If `grid` is not specified, a geometry is added to the GeoDataFrame.
         """
-        self.grid = grid
-        self.filepaths = filepaths
-        self.filename_def = filename_def
-        if dimensions:
-            self.dimensions = dimensions
+        # initialise simple class variables
+        self.dimensions = dimensions
+        self.history = []  # TODO
+
+        # initialise/find filepaths
+        self.filepaths = None
+        if filepaths:
+            self.filepaths = filepaths
+        elif dir_tree:
+            self.filepaths = dir_tree.file_register
+        elif inventory:
+            self.filepaths = inventory['filepath']
+
+        # create inventory from found filepaths
+        self.inventory = None
+        if inventory:
+            self.inventory = inventory
         else:
-           self.dimensions = filename_def.keys()
+            self.__inventory_from_filepaths(create_smart_filename)
 
-        if not inventory:
-            # initialise inventory
-            inventory = dict()
-            inventory['filepath'] = []
-            for dimension in self.dimensions:
-                inventory[dimension] = []
+        self.grid = None
+        if grid:
+            self.grid = grid
+        elif self.inventory is not None:
+            geometries = [self.__geometry_from_file(filepath) for filepath in self.filepaths]
+            self.add_dimension('geometry', geometries)
 
-            # fill inventory
-            for filepath in filepaths:
-                inventory['filepath'].append(filepath)
-                smart_filename = create_smart_filename(filepath, filename_def, pad=pad, delim=delim)
-                for dimension in dimensions:
-                    inventory[dimension].append(smart_filename[dimension])
+    def __file_type(self, filepath):
+        ext = os.path.splitext(filepath)[1]
+        if ext in ['.tif', '.tiff']:
+            return 'GeoTIFF'
+        elif ext in ['.nc']:
+            return "NetCDF"
+        else:
+            return None
 
-            inventory = pd.DataFrame(inventory, columns=dimensions)
+    def __geometry_from_file(self, filepath):
+        file_type = self.__file_type(filepath)
+        ds = None
+        if file_type == "GeoTIFF":
+            gt = GeoTiffFile(filepath)
+            ds = gt.src
+        elif file_type == "NetCDF":
+            nc = NcFile(filepath)
+            ds = nc.src
 
-        self.inventory = inventory
+        if ds:
+            gdal_img = GdalImage(ds, filepath)
+            boundary_extent = gdal_img.get_extent()
+            boundary_spref = osr.SpatialReference()
+            boundary_spref.ImportFromWkt(gdal_img.projection())
+            boundary_geom = geometry.extent2polygon(boundary_extent, boundary_spref)  # TODO: directly convert it to shapely geometry
+            return loads(boundary_geom.ExportToWkt())
+        else:
+            return
 
-        # TODO: add bands and timestamps from multidimensional files using pyraster
+    def __inventory_from_filepaths(self, create_smart_filename=None):
+        inventory = dict()
+        inventory['filepath'] = []
 
-    @classmethod
-    def from_inventory(cls, inventory, grid, filepaths, filename_def, pad="-", delim="_", dimensions=None):
-        return cls(grid, filepaths, filename_def, pad=pad, delim=delim, dimensions=dimensions, inventory=inventory)
+        # fill inventory
+        if self.filepaths:
+            untrans_filepaths = []
+            if create_smart_filename:
+                for filepath in self.filepaths:
+                    try:
+                        smart_filename = create_smart_filename(os.path.basename(filepath))
+                    except:
+                        untrans_filepaths.append(filepath)
+                        continue
+
+                    inventory['filepath'].append(filepath)
+                    for key, value in smart_filename.fields.items():
+                        if self.dimensions:
+                            if key in self.dimensions:
+                                if key not in inventory.keys():
+                                    inventory[key] = []
+                                inventory[key].append(value)
+                        else:
+                            if key not in inventory.keys():
+                                inventory[key] = []
+                            inventory[key].append(value)
+            else:
+                untrans_filepaths = self.filepaths
+                for untrans_filepath in untrans_filepaths:
+                    for col in inventory.keys():
+                        if col == 'filepath':
+                            inventory[col].append(untrans_filepath)
+                        else:
+                            inventory[col] = None
+
+            self.dimensions = list(inventory.keys())
+            self.inventory = GeoDataFrame(inventory, columns=self.dimensions)
+            self.dimensions.remove('filepath')
 
     def rename_dimensions(self, dimensions_map):
         """
@@ -68,10 +143,13 @@ class eoDataCube(object):
         :return: eoDataCube
         """
         for dimension_name in dimensions_map.keys():
-            idx = self.dimensions.index(dimension_name)
-            self.dimensions[idx] = dimensions_map[dimension_name]
-        # TODO: rename inventory
-        return self.from_inventory(inventory, self.grid, self.filepaths, self.filename_def, dimensions=self.dimensions)
+            if self.dimensions:
+                idx = self.dimensions.index(dimension_name)
+                self.dimensions[idx] = dimensions_map[dimension_name]
+
+            if self.inventory:
+                self.inventory.rename(columns=dimensions_map)
+
 
     def add_dimension(self, name, values):
         """
@@ -83,6 +161,8 @@ class eoDataCube(object):
             They have to have the same length as all the rows in the inventory.
         :return: eoDataCube
         """
+        if self.inventory is not None:
+            self.inventory = self.inventory.assign(**{name: GeoSeries(values, index=self.inventory.index)})
 
     def filter_dimension(self, values, expressions=None, name="time"):
         """
@@ -98,6 +178,7 @@ class eoDataCube(object):
         :return: eoDataCube
         """
 
+
     def split_dimension(self, values, expressions=None, name="time"):
         """
         Splits the datacube according to the given extents and expressions and returns a list of new datacubes.
@@ -111,6 +192,7 @@ class eoDataCube(object):
         :param name:
         :return: list of eoDataCubes
         """
+        pass
 
     def filter_with_pattern(self, pattern):
         """
@@ -120,8 +202,9 @@ class eoDataCube(object):
             A regex (e.g., ".*S1A.*GRD.*").
         :return: eoDataCube
         """
+        pass
 
-    def filter_spatial(self, tilenames=None, bbox=None, geom=None, sref=None, name="tile"):
+    def filter_spatial(self, tilenames=None, roi=None, sref=None, name="tile"):
         """
         Spatially filters the datacube by tilenames, a bounding box and/or a geometry.
         :param tilenames: list [optional]
@@ -136,28 +219,26 @@ class eoDataCube(object):
             Name of the tile/spatial dimension in the filenames.
         :return:
         """
-        if tilenames:
-            #TODO: filter inventory according to full tilename list
+        if roi:
+            if self.grid:
+                pass
+            elif self.inventory is not None:
+                self.inventory = self.inventory[self.inventory.intersects(roi)]
 
-        if geom:
-            #TODO: handle the geometry correctly
-            bbox = geom.getEnvelope()
-
-        if bbox:
-            ftile_names = self.grid.search_tiles_in_roi(bbox, osr_spref=sref)
-            # TODO: filter inventory according to full tilename list
 
     def filter_bands(self, bands):
         """
         Filters the datacube according to the given bands.
         :return: eoDataCube
         """
+        pass
 
     def filter_metadata(self, keys, values):
         """
         Filters the datacube according to given key-value relations in the metadata of the files.
         :return: eoDataCube
         """
+        pass
 
     def load(self, tilenames=None, bbox=None, geom=None, sref=None, dimension_name="tile", data_variables=None):
         """
@@ -176,7 +257,8 @@ class eoDataCube(object):
             Name of the tile/spatial dimension in the filenames.
         :return: xarray
         """
-        dc = self.filter_spatial(tilenames=tilenames, bbox=bbox, geom=geom, sref=sref, name=dimension_name)
+        pass
+        # dc = self.filter_spatial(tilenames=tilenames, bbox=bbox, geom=geom, sref=sref, name=dimension_name)
         # TODO: use pyraster functionalities for the remaining tasks:
             # TODO: pyraster could get a functionality directly working with the inventory given herein. This would create an xarray with the dimensions specified.
         # TODO: merge the cubes using the coordinates and dimensional properties of an xarray.
@@ -188,8 +270,9 @@ class eoDataCube(object):
             Other datacube to match with.
         :return: eoDataCube
         """
-        dc_this, _ = match_dimension(self, dc_other, name)
-        return dc_this
+        pass
+        #dc_this, _ = match_dimension(self, dc_other, name)
+        #return dc_this
 
 
 def match_dimension(dc_1, dc_2, name):
@@ -201,6 +284,7 @@ def match_dimension(dc_1, dc_2, name):
         Second datacube.
     :return:
     """
+    pass
 
 def merge_dcs(dc_1, dc_2, name=None, values=None):
     """
@@ -217,28 +301,7 @@ def merge_dcs(dc_1, dc_2, name=None, values=None):
         They have to have the same length as all the rows in the inventory.
     :return:
     """
-
-
-# class eoDataSystem(object):
-#     def __init__(self, datacubes, labels=None):
-#         if not isinstance(datacubes, (list, dict, OrderedDict)):
-#             datacubes = [datacubes]
-#
-#         if isinstance(datacubes, list):
-#             if labels and len(labels) == len(datacubes):
-#                 self.datacubes = OrderedDict()
-#                 for i, label in enumerate(labels):
-#                     self.datacubes[label] = datacubes[i]
-#             else:
-#                 self.datacubes = datacubes
-#
-#     @classmethod
-#     def from_dc_def(cls, grid, filepaths, filename_def, pad="-", delim="_", dimensions=None, inventory=None,
-#                     label=None):
-#         dc = eoDataCube(filepaths, filename_def, grid, pad=pad, delim=delim, dimensions=dimensions, inventory=inventory)
-#         return cls(dc, labels=[label])
-#
-#     def apply(self):
+    pass
 
 
 

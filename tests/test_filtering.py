@@ -16,12 +16,12 @@ from Equi7Grid.equi7grid.equi7grid import Equi7Grid
 root_dirpath = r"D:\work\data\yeoda\Sentinel-1_CSAR"
 roi = Polygon([(4373136, 1995726), (4373136, 3221041), (6311254, 3221041), (6311254, 1995726)])
 st = sgrt_tree(root_dirpath, register_file_pattern=(".tif$"))
-eodc = eoDataCube(dir_tree=st, create_smart_filename=create_sgrt_filename,
-                  dimensions=['dtime_1', 'dtime_2', 'tile_name', 'pol'])
+eodc = eoDataCube(dir_tree=st, smart_filename_creator=create_sgrt_filename,
+                  dimensions=['time', 'tile_name', 'pol'])
 
 
 fig, ax = plt.subplots(1, 1)
 eodc.inventory.drop_duplicates(subset=['tile_name']).plot(ax=ax, edgecolor='red', facecolor="none")
-eodc.filter_spatial(roi=roi)
-eodc.inventory.drop_duplicates(subset=['tile_name']).plot(ax=ax, edgecolor='blue', facecolor="none")
+eodc_roi = eodc.filter_spatially(roi=roi)
+eodc_roi.inventory.drop_duplicates(subset=['tile_name']).plot(ax=ax, edgecolor='blue', facecolor="none")
 plt.show()

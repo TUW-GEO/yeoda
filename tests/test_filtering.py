@@ -4,7 +4,7 @@ from shapely.geometry import Polygon
 import matplotlib.pyplot as plt
 
 # import yeoda
-from src.yeoda.yeoda import eoDataCube, match_dimension
+from yeoda.yeoda import eoDataCube, match_dimension
 
 # import file and folder naming convention
 from geopathfinder.sgrt_naming import create_sgrt_filename, sgrt_tree

@@ -1,0 +1,6 @@
+# conda config --set always_yes yes --set changeps1 no
+# conda update conda
+# conda create -q -n yeoda python=3.6
+# activate yeoda
+# conda conda install geopandas xarray netCDF4 regex pytest pytest-cov nose
+# pip install Equi7Grid pyraster geopathfinder

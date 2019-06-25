@@ -74,9 +74,9 @@ class eoDataCube(object):
         self.grid = None
         if grid:
             self.grid = grid
-        elif self.inventory is not None:
+        elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()):
             geometries = [self.__geometry_from_file(filepath) for filepath in self.filepaths]
-            self.add_dimension('geometry', geometries)
+            self.add_dimension('geometry', geometries, in_place=True)
 
     def __file_type(self, filepath):
         """
@@ -185,7 +185,7 @@ class eoDataCube(object):
 
     @classmethod
     def from_inventory(cls, inventory, grid=None, dir_tree=None):
-        cls(inventory=inventory, grid=grid, dir_tree=dir_tree)
+        return cls(inventory=inventory, grid=grid, dir_tree=dir_tree)
 
     def rename_dimensions(self, dimensions_map, in_place=False):
         """
@@ -300,7 +300,21 @@ class eoDataCube(object):
         eoDataCube
             eoDataCube object with a filtered inventory according to the given pattern.
         """
-        pass
+        if self.inventory:
+            filepaths = self.inventory['filepath']
+            pattern = re.compile(pattern)
+            if not full_path:
+                file_filter = lambda x: re.match(os.path.basename(x), pattern)
+            else:
+                file_filter = lambda x: re.match(x, pattern)
+            idx_filter = [file_filter(filepath) for filepath in filepaths]
+            inventory = self.inventory[idx_filter]
+
+            if in_place:
+                self.inventory = inventory
+                return self
+            else:
+                return self.from_inventory(inventory=inventory, grid=self.grid, dir_tree=self.dir_tree)
 
     # TODO: also allow shapefiles and more complex geometries
     def filter_spatially(self, tilenames=None, roi=None, sref=None, name="tile", in_place=False):
@@ -396,41 +410,54 @@ class eoDataCube(object):
                           inventory=inventory)
 
     def clone(self):
+        """
+        Clone, i.e. deepcopy a data cube.
+
+        Returns
+        -------
+        eoDataCube
+            Cloned/copied data cube.
+
+        """
         return copy.deepcopy(self)
 
 
-def match_dimension(dc_1, dc_2, name):
+def match_dimension(dcs, name):
     """
-    Matches the given data cubes along the specified dimension.
+    Matches the given data cubes along the specified dimension 'name'.
 
     Parameters
     ----------
-    dc_1: eoDataCube
-        First datacube.
-    dc_2: eoDataCube
-        Second datacube.
+    dcs: list of eoDataCube objects
+       List of data cubes.
+    name: str
+        Name of the dimension, which is used for aligning/filtering the values for all data cubes.
+
+
+    Returns
+    -------
+    list of eoDataCube objects
+        List of data cubes having the same length as the input list.
+        Each value matches all data cubes along the given dimension.
+    """
+    pass
+
+
+def merge_datacubes(dcs):
+    """
+    Merges data cubes in one data cube. By doing so, duplicates are removed and only
+    common dimensions are kept.
+
+    Parameters
+    ----------
+    dcs: list of eoDataCube objects
+       List of data cubes, which should be united based on the common set of dimensions.
 
     Returns
     -------
     eoDataCube
-            New eoDataCube object with a merged inventory from both input data cubes.
-    """
-    pass
-
-def merge_dcs(dc_1, dc_2, name=None, values=None):
-    """
-    Merges two datacubes in one datacube. By doing so, duplicates are removed.
-    If 'name' and 'values' are given, the datacubes are merged over a new dimension.
-    :param dc_1: eoDataCube
-        First datacube.
-    :param dc_2: eoDataCube
-        Second datacube.
-    :param name: str [optional]
-        Name of the new dimension
-    :param values: list [optional]
-        Values of the new dimension (e.g., cloud cover, quality flag, ...).
-        They have to have the same length as all the rows in the inventory.
-    :return:
+        Data cube containing all information of the given data cubes except duplictes and
+        inconsistent dimensions.
     """
     pass
 

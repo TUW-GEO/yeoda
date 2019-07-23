@@ -1,20 +1,21 @@
 import copy
 import os
 import re
-import geopandas as geopd
-from geopandas import GeoSeries, GeoDataFrame
-import pytileproj.geometry as geometry
+
+import pandas as pd
+from geopandas import GeoSeries
+from geopandas import GeoDataFrame
+from shapely.wkt import loads
 from osgeo import osr
+
+# TODO: don't use this module
+import pytileproj.geometry as geometry
 
 from pyraster.geotiff import GeoTiffFile
 from pyraster.netcdf import NcFile
 from pyraster.gdalport import GdalImage
-from shapely.wkt import loads
 
-# TODO: handle file extensions correctly
-# TODO: synchronise filepaths with inventory
-# TODO: include exceptions
-# TODO: clone a data cube?
+
 class eoDataCube(object):
     """
     A filename based data cube.
@@ -44,7 +45,7 @@ class eoDataCube(object):
         # initialise simple class variables
         self.dir_tree = dir_tree
         self.smart_filename_creator = smart_filename_creator
-        self.history = []  # TODO
+        self.history = []
 
         # initialise/find filepaths
         self.filepaths = None
@@ -77,6 +78,401 @@ class eoDataCube(object):
         elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()):
             geometries = [self.__geometry_from_file(filepath) for filepath in self.filepaths]
             self.add_dimension('geometry', geometries, in_place=True)
+
+    @classmethod
+    def from_inventory(cls, inventory, grid=None, dir_tree=None):
+        return cls(inventory=inventory, grid=grid, dir_tree=dir_tree)
+
+    def rename_dimensions(self, dimensions_map, in_place=False):
+        """
+        Renames the dimensions of the data cube.
+
+        Parameters
+        ----------
+        dimensions_map: dict
+            A dictionary representing the relation between old and new dimension names. The keys are the old dimension names,
+            the values the new dimension names (e.g., {'time_begin': 'time'}).
+        in_place: boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        eoDataCube
+            eoDataCube object with renamed dimensions/columns of the inventory.
+        """
+        dimensions = copy.deepcopy(self.dimensions)
+        inventory = self.inventory
+        for dimension_name in dimensions_map.keys():
+            if dimensions:
+                idx = dimensions.index(dimension_name)
+                dimensions[idx] = dimensions_map[dimension_name]
+
+            if self.inventory:
+                inventory = inventory.rename(columns=dimensions_map)
+
+        if in_place:
+            self.dimensions = dimensions
+
+        return self.__assign_inventory(inventory, in_place=in_place)
+
+    def add_dimension(self, name, values, in_place=False):
+        """
+        Adds a new dimension to the data cube.
+
+        Parameters
+        ----------
+        name: str
+            Name of the new dimension
+        values: list
+            Values of the new dimension (e.g., cloud cover, quality flag, ...).
+            They have to have the same length as all the rows in the inventory.
+        in_place: boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        eoDataCube
+            eoDataCube object with an additional dimension in the inventory.
+        """
+        if self.inventory is not None:
+            inventory = self.inventory.assign(**{name: GeoSeries(values, index=self.inventory.index)})
+            return self.__assign_inventory(inventory, in_place=in_place)
+
+    def filter_files_with_pattern(self, pattern, full_path=False, in_place=False):
+        """
+        Filters all filepaths according to the given pattern.
+
+        Parameters
+        ----------
+        pattern: str
+            A regular expression (e.g., ".*S1A.*GRD.*").
+        full_path: boolean, optional
+            Uses the full filepaths for filtering if it is set to True.
+            Otherwise the filename is used (default value is False).
+        in_place: boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        eoDataCube
+            eoDataCube object with a filtered inventory according to the given pattern.
+        """
+        if self.inventory:
+            filepaths = self.inventory['filepath']
+            pattern = re.compile(pattern)
+            if not full_path:
+                file_filter = lambda x: re.match(os.path.basename(x), pattern)
+            else:
+                file_filter = lambda x: re.match(x, pattern)
+            idx_filter = [file_filter(filepath) for filepath in filepaths]
+            inventory = self.inventory[idx_filter]
+            return self.__assign_inventory(inventory, in_place=in_place)
+        else:
+            return None
+
+    def filter_by_metadata(self, metadata, in_place=False):
+        """
+        Filters all filepaths according to the given metadata.
+
+        Parameters
+        ----------
+        metadata: dict
+            Key value relationships being expected to be in the metadata.
+        in_place: boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        eoDataCube
+            eoDataCube object with a filtered inventory according to the given metadata.
+        """
+        bool_filter = []
+        filepaths = self.inventory['filepath']  # use inventory to ensure the same order
+        for filepath in filepaths:
+            file_type = self.__file_type(filepath)
+            ds = None
+            if file_type == "GeoTIFF":
+                gt = GeoTiffFile(filepath)
+                ds = gt.src
+            elif file_type == "NetCDF":
+                nc = NcFile(filepath)
+                ds = nc.src
+
+            select = False
+            if ds:
+                ds_metadata = ds.get_metadata()
+                select = True
+                for key, value in metadata.items():
+                    if key not in ds_metadata.keys():
+                        select = False
+                    else:
+                        if ds_metadata[key] != value:
+                            select = False
+
+            bool_filter.append(select)
+
+        inventory = self.inventory[bool_filter]
+        return self.__assign_inventory(inventory)
+
+    def filter_by_dimension(self, values, expressions=None, name="time", in_place=False):
+        """
+        Filters the data cube according to the given extents and returns a (new) data cube.
+
+        Parameters
+        ----------
+        values: list, tuple, list of tuples or list of lists
+            Values of interest to filter, e.g., timestamps: ('2019-01-01', '2019-02-01'), polarisations: ('VV')
+        expressions: list, tuple, list of tuples or list of lists, optional
+            Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
+            are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
+            They have to have the same length as 'values'.
+        name: str, optional
+            Name of the dimension.
+        in_place: boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        eoDataCube
+        """
+        return self.__filter_by_dimension(values, expressions=expressions, name=name, in_place=in_place, split=False)
+
+    def split_by_dimension(self, values, expressions=None, name="time"):
+        """
+        Splits the data cube according to the given extents and returns a list of data cubes.
+
+        Parameters
+        ----------
+        values: list, tuple, list of tuples or list of lists
+            Values of interest to filter, e.g., timestamps: ('2019-01-01', '2019-02-01'), polarisations: ('VV')
+        expressions: list, tuple, list of tuples or list of lists, optional
+            Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
+            are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
+            They have to have the same length as 'values'.
+        name: str, optional
+            Name of the dimension.
+
+        Returns
+        -------
+        list of eoDataCube's
+        """
+        return self.__filter_by_dimension(values, expressions=expressions, name=name, split=True)
+
+    # TODO: also allow shapefiles and more complex geometries
+    def filter_spatially(self, tilenames=None, roi=None, sref=None, name="tile", in_place=False):
+        """
+        Spatially filters the data cube by tile names, a bounding box and/or a geometry.
+
+        Parameters
+        ----------
+        tilenames: list of str, optional
+            Tile names corresponding to the given grid and inventory.
+        roi: OGR Geometry, Shapely Geometry or list, optional
+            A geometry defining the region of interest. If it is of type list representing the extent
+            (i.e. [x_min, y_min, x_max, y_max]), `sref` has to be given to transform the extent into a
+            georeferenced polygon.
+        sref: osr.SpatialReference, optional
+            Spatial reference of the given region of interest `roi`.
+        name: str, optional
+            Name of the tile/spatial dimension in the inventory.
+        in_place: boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        eoDataCube
+            eoDataCube object with a filtered inventory according to the given region of interest `roi` or tile names
+            `tilenames`.
+        """
+        if roi:
+            if self.grid:
+                pass
+            elif self.inventory is not None and 'geometry' in self.inventory.keys():
+                inventory = self.inventory[self.inventory.intersects(roi)]
+                return self.__assign_inventory(inventory, in_place=in_place)
+
+    def get_monthly_dcs(self, name='time', months=None):
+        """
+        Separates the data cube into months.
+
+        Parameters
+        ----------
+        name: str, optional
+            Name of the dimension.
+        months: list of integers
+            List of integers specifying the months to select/split, i.e. each value is allowed to be in between 1-12.
+
+        Returns
+        -------
+        List of eoDataCube's
+        """
+        sort = False
+        yearly_eodcs = self.get_yearly_dcs(name=name)
+        monthly_eodcs = []
+        for yearly_eodc in yearly_eodcs:
+            if months:
+                # initialise empty dict keeping track of the months
+                timestamps_months = {}
+                for month in months:
+                    timestamps_months[month] = []
+
+                for timestamp in yearly_eodc.inventory[name]:
+                    if timestamp.month in months:
+                        timestamps_months[timestamp.month].append(timestamp)
+            else:
+                sort = True
+                timestamps_months = {}
+                for timestamp in yearly_eodc.inventory[name]:
+                    if timestamp.month not in timestamps_months.keys():
+                        timestamps_months[timestamp.month] = []
+
+                    timestamps_months[timestamp.month].append(timestamp)
+
+                months = timestamps_months.keys()
+
+            if sort:
+                months = sorted(months)  # sort in ascending order
+            values = []
+            expressions = [(">=", "<=")] * len(months)
+            for month in months:
+                min_timestamp = min(timestamps_months[month])
+                max_timestamp = max(timestamps_months[month])
+                values.append((min_timestamp, max_timestamp))
+
+            monthly_eodcs.extend(self.split_by_dimension(values, expressions, name=name))
+
+        return monthly_eodcs
+
+    def get_yearly_dcs(self, name='time', years=None):
+        """
+        Separates the data cube into years.
+
+        Parameters
+        ----------
+        name: str, optional
+            Name of the dimension.
+        years: list of integers
+            List of integers specifying the years to select/split.
+
+        Returns
+        -------
+        List of eoDataCube's
+        """
+        sort = False
+        if years:
+            # initialise empty dict keeping track of the years
+            timestamps_years = {}
+            for year in years:
+                timestamps_years[year] = []
+
+            for timestamp in self.inventory[name]:
+                if timestamp.year in years:
+                    timestamps_years[timestamp.year].append(timestamp)
+        else:
+            sort = True
+            timestamps_years = {}
+            for timestamp in self.inventory[name]:
+                if timestamp.year not in timestamps_years.keys():
+                    timestamps_years[timestamp.year] = []
+
+                timestamps_years[timestamp.year].append(timestamp)
+
+            years = timestamps_years.keys()
+
+        if sort:
+            years = sorted(years)  # sort in ascending order
+        values = []
+        expressions = [(">=", "<=")]*len(years)
+        for year in years:
+            min_timestamp = min(timestamps_years[year])
+            max_timestamp = max(timestamps_years[year])
+            values.append((min_timestamp, max_timestamp))
+
+        return self.split_by_dimension(values, expressions, name=name)
+
+    def load(self, tilenames=None, bbox=None, geom=None, sref=None, name="tile", data_variables=None):
+        """
+        Loads data as an array.
+
+        Parameters
+        ----------
+        tilenames: list [optional]
+            Tilenames corresponding to the given grid and inventory.
+        bbox: tuple, list [optional]
+            List containing the extent of the region of interest, i.e. [x_min, y_min, x_max, y_max]
+        geom: str, ogr.Geometry [optional]
+            A geometry defining the region of interest. It can be an OGR geometry, i.e. a polygon, or a shape file.
+        sref: osr.SpatialReference [optional]
+            It is a mandatory parameter if the bounding box coordinate system differs from the grid coordinate system.
+        dimension_name: str [optional]
+            Name of the tile/spatial dimension in the filenames.
+        data_variables: [optional]
+            Name of the tile/spatial dimension in the filenames.
+
+        Returns
+        -------
+        object
+            array-like object, e.g. numpy, dask or xarray array
+        """
+        pass
+
+    def merge(self, dc_other, name=None):
+        """
+        Merges the data cubes with respect to another data cube along the specified dimension.
+
+        Parameters
+        ----------
+        dc_other: eoDataCube
+            Data cube to merge with.
+        name: str, optional
+            Name of the dimension.
+        in_place: boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        eoDataCube
+        """
+        return merge_datacubes([self, dc_other], name=name)
+
+    def match_dimension(self, dc_other, name, in_place=False):
+        """
+        Matches the given data cubes along the specified dimension 'name'.
+
+        Parameters
+        ----------
+        dc_other: eoDataCube
+            Data cube to match dimensions with.
+        name: str
+            Name of the dimension, which is used for aligning/filtering the values for all data cubes.
+        in_place: boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        eoDataCube
+        """
+        return match_dimension([self, dc_other], name, in_place=in_place)[0]
+
+    def clone(self):
+        """
+        Clone, i.e. deepcopy a data cube.
+
+        Returns
+        -------
+        eoDataCube
+            Cloned/copied data cube.
+
+        """
+        return copy.deepcopy(self)
 
     def __file_type(self, filepath):
         """
@@ -172,93 +568,27 @@ class eoDataCube(object):
                             inventory[key].append(value)
             else:
                 untrans_filepaths = self.filepaths
-                for untrans_filepath in untrans_filepaths:
-                    for col in inventory.keys():
-                        if col == 'filepath':
-                            inventory[col].append(untrans_filepath)
-                        else:
-                            inventory[col] = None
+
+            for untrans_filepath in untrans_filepaths:
+                for col in inventory.keys():
+                    if col == 'filepath':
+                        inventory[col].append(untrans_filepath)
+                    else:
+                        inventory[col] = None
 
             self.dimensions = list(inventory.keys())
             self.inventory = GeoDataFrame(inventory, columns=self.dimensions)
             self.dimensions.remove('filepath')
 
-    @classmethod
-    def from_inventory(cls, inventory, grid=None, dir_tree=None):
-        return cls(inventory=inventory, grid=grid, dir_tree=dir_tree)
-
-    def rename_dimensions(self, dimensions_map, in_place=False):
-        """
-        Renames the dimensions of the data cube.
-
-        Parameters
-        ----------
-        dimensions_map: dict
-            A dictionary representing the relation between old and new dimension names. The keys are the old dimension names,
-            the values the new dimension names (e.g., {'time_begin': 'time'}).
-        in_place: boolean, optional
-            If true, the current class instance will be altered.
-            If false, a new class instance will be returned (default value is False).
-
-        Returns
-        -------
-        eoDataCube
-            eoDataCube object with renamed dimensions/columns of the inventory.
-        """
-        dimensions = copy.deepcopy(self.dimensions)
-        inventory = self.inventory
-        for dimension_name in dimensions_map.keys():
-            if dimensions:
-                idx = dimensions.index(dimension_name)
-                dimensions[idx] = dimensions_map[dimension_name]
-
-            if self.inventory:
-                inventory = inventory.rename(columns=dimensions_map)
-
-        if in_place:
-            self.inventory = inventory
-            self.dimensions = dimensions
-            return self
-        else:
-            return self.from_inventory(inventory=inventory, grid=self.grid, dir_tree=self.dir_tree)
-
-    def add_dimension(self, name, values, in_place=False):
-        """
-        Adds a new dimension to the data cube.
-
-        Parameters
-        ----------
-        name: str
-            Name of the new dimension
-        values: list
-            Values of the new dimension (e.g., cloud cover, quality flag, ...).
-            They have to have the same length as all the rows in the inventory.
-        in_place: boolean, optional
-            If true, the current class instance will be altered.
-            If false, a new class instance will be returned (default value is False).
-
-        Returns
-        -------
-        eoDataCube
-            eoDataCube object with an additional dimension in the inventory.
-        """
-        if self.inventory is not None:
-            inventory = self.inventory.assign(**{name: GeoSeries(values, index=self.inventory.index)})
-            if in_place:
-                self.inventory = inventory
-                return self
-            else:
-                return self.from_inventory(inventory=inventory, grid=self.grid, dir_tree=self.dir_tree)
-
-    def filter_by_dimension(self, values, expressions=None, name="time", split=False, in_place=False):
+    def __filter_by_dimension(self, values, expressions=None, name="time", split=False, in_place=False):
         """
         Filters the data cube according to the given extent and returns a new data cube.
 
         Parameters
         ----------
-        values: tuple or list
+        values: list, tuple, list of tuples or list of lists
             Values of interest to filter, e.g., timestamps: ('2019-01-01', '2019-02-01'), polarisations: ('VV')
-        expressions: tuple, list, optional
+        expressions: list, tuple, list of tuples or list of lists, optional
             Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
             are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
             They have to have the same length as 'values'.
@@ -277,20 +607,42 @@ class eoDataCube(object):
             If `split` is true and multiple filters are specified, a list of eoDataCube objects will be returned.
             If not, the inventory of the eoDataCube is filtered.
         """
-        pass
+        n_filters = len(values)
+        inventory = copy.deepcopy(self.inventory)
+        filtered_inventories = []
+        for i in range(n_filters):
+            value = values[i]
+            expression = expressions[i]
+            if not isinstance(value, (tuple, list)):
+                value = [value]
 
+            if not isinstance(expression, (tuple, list)):
+                expression = [expression]
 
-    def filter_files_with_pattern(self, pattern, full_path=False, in_place=False):
+            if (len(value) == 2) and (len(expression) == 2):
+                filter_cmd = "inventory[(inventory[name] expression[0] value[0]) & (inventory[name] expression[1] value[1])]"
+            elif (len(value) == 1) and (len(expression) == 1):
+                filter_cmd = "inventory[inventory[name] expression[0] value[0]]"
+            else:
+                raise Exception('Length of value (={}) and length of expression (={}) does not match or is larger than 2.'.format(len(value), len(expression)))
+            inventory = eval(filter_cmd)
+
+        if split:
+            eodcs = [self.from_inventory(filtered_inventory, grid=self.grid, dir_tree=self.dir_tree)
+                     for filtered_inventory in filtered_inventories]
+            return eodcs
+        else:
+            filtered_inventory = pd.concat(filtered_inventories, ignore_index=True)
+            return self.__assign_inventory(filtered_inventory, in_place=in_place)
+
+    def __assign_inventory(self, inventory, in_place=True):
         """
-        Filters all filepaths according to the given pattern.
+        Helper method for either create a new data cube or overwrite the old data cube with the given inventory.
 
         Parameters
         ----------
-        pattern: str
-            A regular expression (e.g., ".*S1A.*GRD.*").
-        full_path: boolean, optional
-            Uses the full filepaths for filtering if it is set to True.
-            Otherwise the filename is used (default value is False).
+        inventory: GeoDataFrame
+            Data cube inventory.
         in_place: boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
@@ -298,106 +650,25 @@ class eoDataCube(object):
         Returns
         -------
         eoDataCube
-            eoDataCube object with a filtered inventory according to the given pattern.
         """
-        if self.inventory:
-            filepaths = self.inventory['filepath']
-            pattern = re.compile(pattern)
-            if not full_path:
-                file_filter = lambda x: re.match(os.path.basename(x), pattern)
-            else:
-                file_filter = lambda x: re.match(x, pattern)
-            idx_filter = [file_filter(filepath) for filepath in filepaths]
-            inventory = self.inventory[idx_filter]
-
-            if in_place:
-                self.inventory = inventory
-                return self
-            else:
-                return self.from_inventory(inventory=inventory, grid=self.grid, dir_tree=self.dir_tree)
-
-    # TODO: also allow shapefiles and more complex geometries
-    def filter_spatially(self, tilenames=None, roi=None, sref=None, name="tile", in_place=False):
-        """
-        Spatially filters the data cube by tile names, a bounding box and/or a geometry.
-
-        Parameters
-        ----------
-        tilenames: list of str, optional
-            Tile names corresponding to the given grid and inventory.
-        roi: OGR Geometry, Shapely Geometry or list, optional
-            A geometry defining the region of interest. If it is of type list representing the extent
-            (i.e. [x_min, y_min, x_max, y_max]), `sref` has to be given to transform the extent into a
-            georeferenced polygon.
-        sref: osr.SpatialReference, optional
-            Spatial reference of the given region of interest `roi`.
-        name: str, optional
-            Name of the tile/spatial dimension in the inventory.
-        in_place: boolean, optional
-            If true, the current class instance will be altered.
-            If false, a new class instance will be returned (default value is False).
-
-        Returns
-        -------
-        eoDataCube
-            eoDataCube object with a filtered inventory according to the given region of interest `roi` or tile names
-            `tilenames`.
-        """
-        if roi:
-            if self.grid:
-                pass
-            elif self.inventory is not None:
-                inventory = self.inventory[self.inventory.intersects(roi)]
-                if in_place:
-                    self.inventory = inventory
-                    return self
-                else:
-                    return self.from_inventory(inventory=inventory, grid=self.grid, dir_tree=self.dir_tree)
-
-
-
-    def filter_by_metadata(self, keys, values):
-        """
-        Filters the datacube according to given key-value relations in the metadata of the files.
-        :return: eoDataCube
-        """
-        pass
-
-    def load(self, tilenames=None, bbox=None, geom=None, sref=None, dimension_name="tile", data_variables=None):
-        """
-        Loads data as an xarray.
-        :param tilenames: list [optional]
-            Tilenames corresponding to the given grid and inventory.
-        :param bbox: tuple, list [optional]
-            List containing the extent of the region of interest, i.e. [x_min, y_min, x_max, y_max]
-        :param geom: str, ogr.Geometry [optional]
-            A geometry defining the region of interest. It can be an OGR geometry, i.e. a polygon, or a shape file.
-        :param sref: osr.SpatialReference [optional]
-            It is a mandatory parameter if the bounding box coordinate system differs from the grid coordinate system.
-        :param dimension_name: str [optional]
-            Name of the tile/spatial dimension in the filenames.
-        :param data_variables: [optional]
-            Name of the tile/spatial dimension in the filenames.
-        :return: xarray
-        """
-        pass
-        # dc = self.filter_spatial(tilenames=tilenames, bbox=bbox, geom=geom, sref=sref, name=dimension_name)
-        # TODO: use pyraster functionalities for the remaining tasks:
-        # TODO: pyraster could get a functionality directly working with the inventory given herein. This would create an xarray with the dimensions specified.
-        # TODO: merge the cubes using the coordinates and dimensional properties of an xarray.
-
-    def match_dimension(self, dc_other, name):
-        """
-        Matches the datacubes with respect to another datacube along the specified dimension.
-        :param dc_other: eoDataCube
-            Other datacube to match with.
-        :return: eoDataCube
-        """
-        pass
-        #dc_this, _ = match_dimension(self, dc_other, name)
-        #return dc_this
+        if in_place:
+            self.inventory = inventory
+            return self
+        else:
+            return self.from_inventory(inventory=inventory, grid=self.grid, dir_tree=self.dir_tree)
 
     def __deepcopy__(self, memodict={}):
+        """
+        Deepcopy method of the eoDataCube class.
+
+        Parameters
+        ----------
+        memodict: dict, optional
+
+        Returns
+        -------
+        eoDataCube
+        """
         filepaths = copy.deepcopy(self.filepaths)
         grid = copy.deepcopy(self.grid)
         dir_tree = copy.deepcopy(self.dir_tree)
@@ -409,26 +680,14 @@ class eoDataCube(object):
                           smart_filename_creator=smart_filename_creator, dimensions=dimensions,
                           inventory=inventory)
 
-    def clone(self):
-        """
-        Clone, i.e. deepcopy a data cube.
 
-        Returns
-        -------
-        eoDataCube
-            Cloned/copied data cube.
-
-        """
-        return copy.deepcopy(self)
-
-
-def match_dimension(dcs, name):
+def match_dimension(dcs, name, in_place=False):
     """
     Matches the given data cubes along the specified dimension 'name'.
 
     Parameters
     ----------
-    dcs: list of eoDataCube objects
+    dcs: list of eoDataCube's
        List of data cubes.
     name: str
         Name of the dimension, which is used for aligning/filtering the values for all data cubes.
@@ -440,10 +699,21 @@ def match_dimension(dcs, name):
         List of data cubes having the same length as the input list.
         Each value matches all data cubes along the given dimension.
     """
-    pass
+    values = []
+    for dc in dcs:
+        values.extend(dc.inventory[name])
+
+    unique_values = pd.unique(values)
+
+    matched_dcs = []
+    for dc in dcs:
+        expressions = [('==')]*len(unique_values)
+        matched_dcs.append(dc.filter_by_dimension(unique_values, expressions=expressions, name=name, in_place=in_place))
+
+    return matched_dcs
 
 
-def merge_datacubes(dcs):
+def merge_datacubes(dcs, name=None):
     """
     Merges data cubes in one data cube. By doing so, duplicates are removed and only
     common dimensions are kept.
@@ -452,14 +722,21 @@ def merge_datacubes(dcs):
     ----------
     dcs: list of eoDataCube objects
        List of data cubes, which should be united based on the common set of dimensions.
+    name: str
+        Name of the dimension, which is used for aligning/filtering the values for all data cubes.
 
     Returns
     -------
     eoDataCube
-        Data cube containing all information of the given data cubes except duplictes and
+        Data cube containing all information of the given data cubes except duplicates and
         inconsistent dimensions.
     """
-    pass
+    merged_inventory = dcs[0].inventory
+    dcs = dcs[1:]
+    for dc in dcs:
+        merged_inventory = merged_inventory.merge(dc.inventory, on=name)
+
+    return dcs[0].__assign_inventory(merged_inventory, in_place=False)
 
 
 

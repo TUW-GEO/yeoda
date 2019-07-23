@@ -7,7 +7,7 @@ from shapely.geometry import Polygon
 import matplotlib.pyplot as plt
 
 # import yeoda
-from yeoda.yeoda import eoDataCube, match_dimension
+from yeoda import eoDataCube, match_dimension
 
 # import file and folder naming convention
 from geopathfinder.sgrt_naming import create_sgrt_filename, sgrt_tree
@@ -21,18 +21,13 @@ def cur_path():
     return pth
 
 
-
 class TestEODataCube(unittest.TestCase):
-
 
     def setUp(self):
         self.path = os.path.join(cur_path(), 'testdata')
 
-
     def tearDown(self):
-
         pass
-
 
     def test_filter_spatially(self):
 
@@ -54,3 +49,9 @@ class TestEODataCube(unittest.TestCase):
         fig, ax = None, None
 
         pass
+
+
+if __name__ == '__main__':
+    dc_tester = TestEODataCube()
+    dc_tester.setUp()
+    dc_tester.test_filter_spatially()

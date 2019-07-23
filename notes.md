@@ -22,3 +22,7 @@
 ## miscellaneous
 - work on RS math packages (slope computations, soil moisture, ...)
 - work on external projection package (e.g., pi)
+
+
+# meeting:
+- new external module pyvector (e.g. extent2polygon)?

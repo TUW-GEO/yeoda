@@ -18,11 +18,13 @@ import pytileproj.base
 from pyraster.geotiff import GeoTiffFile
 from pyraster.netcdf import NcFile
 from pyraster.gdalport import GdalImage
+from pyraster.timestack import GeoTiffRasterTimeStack
 
-from errors import IOClassNotFound
-from errors import DataTypeUnknown
-from errors import GeometryUnkown
-from errors import TileNotAvailable
+from yeoda.errors import IOClassNotFound
+from yeoda.errors import DataTypeUnknown
+from yeoda.errors import GeometryUnkown
+from yeoda.errors import TileNotAvailable
+
 
 class EODataCube(object):
     """
@@ -127,8 +129,8 @@ class EODataCube(object):
                 idx = dimensions.index(dimension_name)
                 dimensions[idx] = dimensions_map[dimension_name]
 
-            if self.inventory:
-                inventory = inventory.rename(columns=dimensions_map)
+        if self.inventory is not None:
+            inventory = inventory.rename(columns=dimensions_map)
 
         if in_place:
             self.dimensions = dimensions
@@ -232,6 +234,9 @@ class EODataCube(object):
         inventory = self.inventory[bool_filter]
         return self.__assign_inventory(inventory, in_place=in_place)
 
+    def sort_by_dimension(self, name):
+        pass
+
     def filter_by_dimension(self, values, expressions=None, name="time", in_place=False):
         """
         Filters the data cube according to the given extents and returns a (new) data cube.
@@ -303,9 +308,12 @@ class EODataCube(object):
             eoDataCube object with a filtered inventory according to the given region of interest `roi` or tile names
             `tilenames`.
         """
+        if not isinstance(tilenames, (tuple, list)):
+            tilenames = [tilenames]
+
         if self.grid:
             if check_grid:
-                available_tilenames = self.grid.list_tiles_covering_land()  # TODO definitely has to be replaced
+                available_tilenames = self.grid.tilesys.list_tiles_covering_land()  # TODO definitely has to be replaced
                 for tilename in tilenames:
                     if tilename not in available_tilenames:
                         raise TileNotAvailable(tilename)
@@ -482,13 +490,47 @@ class EODataCube(object):
         """
         pass
 
-    def load_by_coord(self, x, y, osr_spref):
-        pass
+    def load_by_coord(self, x, y, src_spref=None, name="tile"):
+        if 'band' in self.dimensions:
+            band = int(list(set(self.inventory['band']))[0])
+            self.filter_by_dimension([band], name='band', in_place=True)  # filter datacube to only keep the remaining bands
+        else:
+            band = 1
 
-    def encode(self, data, **kwargs):
+        if self.grid:
+            if src_spref is not None:
+                tar_spref = self.grid.core.projection.osr_spref
+                x, y = geometry.uv2xy(x, y, src_spref, tar_spref)
+            tilenames = list(self.inventory[name])
+            if len(list(set(tilenames))) > 1:
+                raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
+            tilename = tilenames[0]
+            i, j = self.grid.tilesys.create_tile(name=tilename).xy2ij(x, y)
+        else:
+            filepath = self.inventory['filepath'][0]
+            file_type = self.__file_type(filepath)
+            io_class = self.__io_class(file_type)
+            ds = io_class.src
+            gdal_img = GdalImage(ds, filepath)
+            if src_spref is not None:
+                tar_spref = osr.SpatialReference()
+                tar_spref.ImportFromWkt(gdal_img.projection())
+                x, y = geometry.uv2xy(x, y, src_spref, tar_spref)
+            gt = gdal_img.geotransform()
+            i = int(round(-1.0 * (gt[2] * gt[3] - gt[0] * gt[5] + gt[5] * x - gt[2] * y) /
+                          (gt[2] * gt[4] - gt[1] * gt[5])))
+            j = int(round(-1.0 * (-1 * gt[1] * gt[3] + gt[0] * gt[4] - gt[4] * x + gt[1] * y) /
+                          (gt[2] * gt[4] - gt[1] * gt[5])))
+
+        file_ts = {'filenames': list(self.inventory['filepath'])}
+        gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
+
+        return gt_timestack.read_ts(i, j, decode_func=self.decode)
+
+    def encode(self, data):
         return data
 
-    def decode(self, data, **kwargs):
+    def decode(self, data):
         return data
 
     def merge(self, dc_other, name=None):
@@ -611,13 +653,8 @@ class EODataCube(object):
             Shapely Polygon representing the boundary of the file or None if the file can not be identified.
         """
         file_type = self.__file_type(filepath)
-        ds = None
-        if file_type == "GeoTIFF":
-            gt = GeoTiffFile(filepath)
-            ds = gt.src
-        elif file_type == "NetCDF":
-            nc = NcFile(filepath)
-            ds = nc.src
+        io_class = self.__io_class(file_type)
+        ds = io_class(filepath).src
 
         if ds:
             gdal_img = GdalImage(ds, filepath)
@@ -647,6 +684,7 @@ class EODataCube(object):
         # fill inventory
         if self.filepaths:
             for filepath in self.filepaths:
+                n = len(inventory['filepath'])
                 local_inventory = OrderedDict()
                 local_inventory['filepath'] = [filepath]
 
@@ -681,19 +719,19 @@ class EODataCube(object):
                         if key not in local_inventory.keys():
                             local_inventory[key] = None
 
-                    # add local inventory keys to global inventory if they are not available globally
-                    n = len(inventory['filepath'])
-                    for key in local_inventory.keys():
-                        if key not in inventory.keys():
-                            if n == 0:  # first time
-                                inventory[key] = []
-                            else:
-                                inventory[key] = [None] * n
-
                     entries = tuple(list(local_inventory.values()))
                     extended_entries = list(itertools.product(*entries))
                 else:
                     extended_entries = list(local_inventory.values())
+                    extended_entries = list(map(list, zip(*extended_entries)))
+
+                # add local inventory keys to global inventory if they are not available globally
+                for key in local_inventory.keys():
+                    if key not in inventory.keys():
+                        if n == 0:  # first time
+                            inventory[key] = []
+                        else:
+                            inventory[key] = [None] * n
 
                 for entry in extended_entries:
                     for i, key in enumerate(inventory.keys()):
@@ -746,12 +784,14 @@ class EODataCube(object):
                 expression = [expression]
 
             if (len(value) == 2) and (len(expression) == 2):
-                filter_cmd = "inventory[(inventory[name] expression[0] value[0]) & (inventory[name] expression[1] value[1])]"
+                filter_cmd = "inventory[(inventory[name] {} value[0]) & " \
+                             "(inventory[name] {} value[1])]".format(expression[0], expression[1])
             elif (len(value) == 1) and (len(expression) == 1):
-                filter_cmd = "inventory[inventory[name] expression[0] value[0]]"
+                filter_cmd = "inventory[inventory[name] {} value[0]]".format(expression[0])
             else:
                 raise Exception('Length of value (={}) and length of expression (={}) does not match or is larger than 2.'.format(len(value), len(expression)))
-            inventory = eval(filter_cmd)
+
+            filtered_inventories.append(eval(filter_cmd))
 
         if split:
             eodcs = [self.from_inventory(filtered_inventory, grid=self.grid, dir_tree=self.dir_tree)

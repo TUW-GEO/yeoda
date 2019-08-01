@@ -24,5 +24,8 @@
 - work on external projection package (e.g., pi)
 
 
-# meeting:
+# meeting on 24.07.2019:
 - new external module pyvector (e.g. extent2polygon)?
+- grid <- area collection <- area definition
+- area collection should have tree structure to identify neighbours
+- yeoda defines reader inside load and writer inside write

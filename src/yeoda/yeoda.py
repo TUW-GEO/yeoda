@@ -1,27 +1,35 @@
 import copy
 import os
 import re
+import itertools
+import ogr
 
 import pandas as pd
+from collections import OrderedDict
 from geopandas import GeoSeries
 from geopandas import GeoDataFrame
 from shapely.wkt import loads
 from osgeo import osr
+import shapely.wkt
 
 # TODO: don't use this module
 import pytileproj.geometry as geometry
-
+import pytileproj.base
 from pyraster.geotiff import GeoTiffFile
 from pyraster.netcdf import NcFile
 from pyraster.gdalport import GdalImage
 
+from errors import IOClassNotFound
+from errors import DataTypeUnknown
+from errors import GeometryUnkown
+from errors import TileNotAvailable
 
-class eoDataCube(object):
+class EODataCube(object):
     """
     A filename based data cube.
     """
     def __init__(self, filepaths=None, grid=None, dir_tree=None, smart_filename_creator=None, dimensions=None,
-                 inventory=None):
+                 inventory=None, io_map=None, io_md_map=None, ignore_metadata=True):
         """
         Constructor of the eoDataCube class.
 
@@ -44,8 +52,19 @@ class eoDataCube(object):
         """
         # initialise simple class variables
         self.dir_tree = dir_tree
-        self.smart_filename_creator = smart_filename_creator
-        self.history = []
+
+        # initialise IO classes responsible for reading and writing
+        if io_map is not None:
+            self.io_map = io_map
+        else:
+            self.io_map = {'GeoTIFF': GeoTiffFile, 'NetCDF': NcFile}
+
+        # initialise IO classes metadata translation
+        if io_md_map is not None:
+            self.io_md_map = io_md_map
+        else:
+            self.io_md_map = {'GeoTIFF': {'band': None}, 'NetCDF': {'time': ['t', 'time'],
+                                                                    'var_name': ['var_name']}}
 
         # initialise/find filepaths
         self.filepaths = None
@@ -70,7 +89,7 @@ class eoDataCube(object):
         if inventory is not None:
             self.inventory = inventory
         else:
-            self.__inventory_from_filepaths(smart_filename_creator)
+            self.__inventory_from_filepaths(smart_filename_creator, ignore_metadata)
 
         self.grid = None
         if grid:
@@ -194,13 +213,8 @@ class eoDataCube(object):
         filepaths = self.inventory['filepath']  # use inventory to ensure the same order
         for filepath in filepaths:
             file_type = self.__file_type(filepath)
-            ds = None
-            if file_type == "GeoTIFF":
-                gt = GeoTiffFile(filepath)
-                ds = gt.src
-            elif file_type == "NetCDF":
-                nc = NcFile(filepath)
-                ds = nc.src
+            io_class = self.__io_class(file_type)
+            ds = io_class.src
 
             select = False
             if ds:
@@ -216,7 +230,7 @@ class eoDataCube(object):
             bool_filter.append(select)
 
         inventory = self.inventory[bool_filter]
-        return self.__assign_inventory(inventory)
+        return self.__assign_inventory(inventory, in_place=in_place)
 
     def filter_by_dimension(self, values, expressions=None, name="time", in_place=False):
         """
@@ -263,8 +277,7 @@ class eoDataCube(object):
         """
         return self.__filter_by_dimension(values, expressions=expressions, name=name, split=True)
 
-    # TODO: also allow shapefiles and more complex geometries
-    def filter_spatially(self, tilenames=None, roi=None, sref=None, name="tile", in_place=False):
+    def filter_spatially_by_tilename(self, tilenames, dimension_name="tile", in_place=False, check_grid=True):
         """
         Spatially filters the data cube by tile names, a bounding box and/or a geometry.
 
@@ -290,12 +303,69 @@ class eoDataCube(object):
             eoDataCube object with a filtered inventory according to the given region of interest `roi` or tile names
             `tilenames`.
         """
-        if roi:
-            if self.grid:
-                pass
-            elif self.inventory is not None and 'geometry' in self.inventory.keys():
-                inventory = self.inventory[self.inventory.intersects(roi)]
-                return self.__assign_inventory(inventory, in_place=in_place)
+        if self.grid:
+            if check_grid:
+                available_tilenames = self.grid.list_tiles_covering_land()  # TODO definitely has to be replaced
+                for tilename in tilenames:
+                    if tilename not in available_tilenames:
+                        raise TileNotAvailable(tilename)
+            return self.filter_by_dimension(tilenames, name=dimension_name, in_place=in_place)
+        else:
+            print('No grid is provided to extract tile information.')
+            return self
+
+    # TODO: also allow shapefiles and more complex geometries
+    def filter_spatially_by_geom(self, geom, osr_spref=None, dimension_name="tile", in_place=False):
+        """
+        Spatially filters the data cube by tile names, a bounding box and/or a geometry.
+
+        Parameters
+        ----------
+        tilenames: list of str, optional
+            Tile names corresponding to the given grid and inventory.
+        roi: OGR Geometry, Shapely Geometry or list, optional
+            A geometry defining the region of interest. If it is of type list representing the extent
+            (i.e. [x_min, y_min, x_max, y_max]), `sref` has to be given to transform the extent into a
+            georeferenced polygon.
+        sref: osr.SpatialReference, optional
+            Spatial reference of the given region of interest `roi`.
+        name: str, optional
+            Name of the tile/spatial dimension in the inventory.
+        in_place: boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        eoDataCube
+            eoDataCube object with a filtered inventory according to the given region of interest `roi` or tile names
+            `tilenames`.
+        """
+        geom_roi = None
+        if isinstance(geom,(tuple, list)) and (not isinstance(geom[0],(tuple, list))) and (len(geom) == 4) and osr_spref:
+            geom_roi = geometry.extent2polygon(geom, osr_spref)
+        elif isinstance(geom,(tuple, list)) and isinstance(geom[0],(tuple, list)) and osr_spref:
+            edge = ogr.Geometry(ogr.wkbLinearRing)
+            for point in geom:
+                if len(point) == 2:
+                    edge.AddPoint(float(point[0]), float(point[1]))
+            edge.CloseRings()
+            geom_roi = ogr.Geometry(ogr.wkbPolygon)
+            geom_roi.AddGeometry(edge)
+            geom_roi.AssignSpatialReference(osr_spref)
+        elif isinstance(geom, ogr.Geometry):
+            geom_roi = geom
+        else:
+            raise GeometryUnkown(geom)
+
+        if self.grid:
+            tilenames = self.grid.search_tiles_in_roi(geom_area=geom_roi)
+            self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, in_place=in_place,
+                                              check_grid=False)
+        elif self.inventory is not None and 'geometry' in self.inventory.keys():
+            geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
+            inventory = self.inventory[self.inventory.intersects(geom_roi)]
+            return self.__assign_inventory(inventory, in_place=in_place)
 
     def get_monthly_dcs(self, name='time', months=None):
         """
@@ -396,22 +466,12 @@ class eoDataCube(object):
 
         return self.split_by_dimension(values, expressions, name=name)
 
-    def load(self, tilenames=None, bbox=None, geom=None, sref=None, name="tile", data_variables=None):
+    def load_by_geom(self, geom, ogr_spref=None):
         """
         Loads data as an array.
 
         Parameters
         ----------
-        tilenames: list [optional]
-            Tilenames corresponding to the given grid and inventory.
-        bbox: tuple, list [optional]
-            List containing the extent of the region of interest, i.e. [x_min, y_min, x_max, y_max]
-        geom: str, ogr.Geometry [optional]
-            A geometry defining the region of interest. It can be an OGR geometry, i.e. a polygon, or a shape file.
-        sref: osr.SpatialReference [optional]
-            It is a mandatory parameter if the bounding box coordinate system differs from the grid coordinate system.
-        dimension_name: str [optional]
-            Name of the tile/spatial dimension in the filenames.
         data_variables: [optional]
             Name of the tile/spatial dimension in the filenames.
 
@@ -421,6 +481,15 @@ class eoDataCube(object):
             array-like object, e.g. numpy, dask or xarray array
         """
         pass
+
+    def load_by_coord(self, x, y, osr_spref):
+        pass
+
+    def encode(self, data, **kwargs):
+        return data
+
+    def decode(self, data, **kwargs):
+        return data
 
     def merge(self, dc_other, name=None):
         """
@@ -474,6 +543,25 @@ class eoDataCube(object):
         """
         return copy.deepcopy(self)
 
+    def trim_xarray(self, data):
+        # remove xarray dimension values
+        dc_dimensions = set(self.dimensions)
+        xarray_dimensions = set(data.dims)
+        common_dimensions = list(dc_dimensions.intersection(xarray_dimensions))
+        for common_dimension in common_dimensions:
+            values = list(self.inventory[common_dimension])
+            data = data.drop(values, dim=common_dimension)
+
+        # remove xarray data variables
+        xarray_data_variables = set(data.variables.keys())
+        common_dimensions = list(dc_dimensions.intersection(xarray_data_variables))
+        data = data[common_dimensions]
+
+        return data
+
+    def trim_np_array(self, data):
+        pass
+
     def __file_type(self, filepath):
         """
         Determines the file type of types understood by yeoda, which are "GeoTiff" and "NetCDF".
@@ -495,6 +583,18 @@ class eoDataCube(object):
             return "NetCDF"
         else:
             return None
+
+    def __io_class(self, file_type):
+        if file_type not in self.io_map.keys():
+            raise IOClassNotFound(self.io_map, file_type)
+        else:
+            return self.io_map[file_type]
+
+    def __io_md_map(self, file_type):
+        if file_type not in self.io_md_map.keys():
+            raise IOClassNotFound(self.io_md_map, file_type)
+        else:
+            return self.io_md_map[file_type]
 
     def __geometry_from_file(self, filepath):
         """
@@ -529,7 +629,7 @@ class eoDataCube(object):
         else:
             return
 
-    def __inventory_from_filepaths(self, create_smart_filename=None):
+    def __inventory_from_filepaths(self, create_smart_filename=None, ignore_metadata=True):
         """
         Creates GeoDataFrame (`inventory`) based on all filepaths.
         Each filepath/filename is translated to a SmartFilename object using a translation function
@@ -541,40 +641,63 @@ class eoDataCube(object):
             Translates a filepath/filename to a SmartFilename object.
 
         """
-        inventory = dict()
+        inventory = OrderedDict()
         inventory['filepath'] = []
 
         # fill inventory
         if self.filepaths:
-            untrans_filepaths = []
-            if create_smart_filename:
-                for filepath in self.filepaths:
-                    try:
-                        smart_filename = create_smart_filename(os.path.basename(filepath))
-                    except:
-                        untrans_filepaths.append(filepath)
-                        continue
+            for filepath in self.filepaths:
+                local_inventory = OrderedDict()
+                local_inventory['filepath'] = [filepath]
 
-                    inventory['filepath'].append(filepath)
-                    for key, value in smart_filename.fields.items():
-                        if self.dimensions:
-                            if key in self.dimensions:
-                                if key not in inventory.keys():
-                                    inventory[key] = []
-                                inventory[key].append(value)
-                        else:
-                            if key not in inventory.keys():
-                                inventory[key] = []
-                            inventory[key].append(value)
-            else:
-                untrans_filepaths = self.filepaths
+                # get information from filename
+                smart_filename = None
+                try:
+                    smart_filename = create_smart_filename(os.path.basename(filepath), convert=True)
+                except:
+                    pass
 
-            for untrans_filepath in untrans_filepaths:
-                for col in inventory.keys():
-                    if col == 'filepath':
-                        inventory[col].append(untrans_filepath)
+                if smart_filename:
+                    if self.dimensions:
+                        for dimension in self.dimensions:
+                            try:
+                                local_inventory[dimension] = [smart_filename[dimension]]
+                            except:
+                                pass
                     else:
-                        inventory[col] = None
+                        for key, value in smart_filename.fields.items():
+                            local_inventory[key] = [value]
+
+                if not ignore_metadata:  # get information from data set metadata
+                    file_type = self.__file_type(filepath)
+                    io_class = self.__io_class(file_type)
+                    io_md_map = self.__io_md_map(file_type)
+                    metadata = io_class(filepath).get_dimensions_info(map=io_md_map)
+                    for key, value in metadata.items():
+                        local_inventory[key] = value
+
+                    # add global inventory keys to local inventory if they are not available locally
+                    for key in inventory.keys():
+                        if key not in local_inventory.keys():
+                            local_inventory[key] = None
+
+                    # add local inventory keys to global inventory if they are not available globally
+                    n = len(inventory['filepath'])
+                    for key in local_inventory.keys():
+                        if key not in inventory.keys():
+                            if n == 0:  # first time
+                                inventory[key] = []
+                            else:
+                                inventory[key] = [None] * n
+
+                    entries = tuple(list(local_inventory.values()))
+                    extended_entries = list(itertools.product(*entries))
+                else:
+                    extended_entries = list(local_inventory.values())
+
+                for entry in extended_entries:
+                    for i, key in enumerate(inventory.keys()):
+                        inventory[key].append(entry[i])
 
             self.dimensions = list(inventory.keys())
             self.inventory = GeoDataFrame(inventory, columns=self.dimensions)
@@ -608,6 +731,9 @@ class eoDataCube(object):
             If not, the inventory of the eoDataCube is filtered.
         """
         n_filters = len(values)
+        if expressions is None:  # equal operator is the default comparison operator
+            expressions = ["=="] * n_filters
+
         inventory = copy.deepcopy(self.inventory)
         filtered_inventories = []
         for i in range(n_filters):
@@ -676,7 +802,7 @@ class eoDataCube(object):
         dimensions = copy.deepcopy(self.dimensions)
         inventory = copy.deepcopy(self.inventory)
 
-        return eoDataCube(filepaths=filepaths, grid=grid, dir_tree=dir_tree,
+        return EODataCube(filepaths=filepaths, grid=grid, dir_tree=dir_tree,
                           smart_filename_creator=smart_filename_creator, dimensions=dimensions,
                           inventory=inventory)
 

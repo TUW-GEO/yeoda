@@ -5,12 +5,14 @@ import itertools
 import ogr
 
 import pandas as pd
+import numpy as np
 from collections import OrderedDict
 from geopandas import GeoSeries
 from geopandas import GeoDataFrame
 from shapely.wkt import loads
 from osgeo import osr
 import shapely.wkt
+from shapely.geometry import Point
 
 # TODO: don't use this module
 import pytileproj.geometry as geometry
@@ -349,22 +351,7 @@ class EODataCube(object):
             eoDataCube object with a filtered inventory according to the given region of interest `roi` or tile names
             `tilenames`.
         """
-        geom_roi = None
-        if isinstance(geom,(tuple, list)) and (not isinstance(geom[0],(tuple, list))) and (len(geom) == 4) and osr_spref:
-            geom_roi = geometry.extent2polygon(geom, osr_spref)
-        elif isinstance(geom,(tuple, list)) and isinstance(geom[0],(tuple, list)) and osr_spref:
-            edge = ogr.Geometry(ogr.wkbLinearRing)
-            for point in geom:
-                if len(point) == 2:
-                    edge.AddPoint(float(point[0]), float(point[1]))
-            edge.CloseRings()
-            geom_roi = ogr.Geometry(ogr.wkbPolygon)
-            geom_roi.AddGeometry(edge)
-            geom_roi.AssignSpatialReference(osr_spref)
-        elif isinstance(geom, ogr.Geometry):
-            geom_roi = geom
-        else:
-            raise GeometryUnkown(geom)
+        geom_roi = self.any_geom2ogr_geom(geom, osr_spref=osr_spref)
 
         if self.grid:
             tilenames = self.grid.search_tiles_in_roi(geom_area=geom_roi)
@@ -474,7 +461,7 @@ class EODataCube(object):
 
         return self.split_by_dimension(values, expressions, name=name)
 
-    def load_by_geom(self, geom, ogr_spref=None):
+    def load_by_geom(self, geom, src_spref=None, name="tile"):
         """
         Loads data as an array.
 
@@ -488,7 +475,64 @@ class EODataCube(object):
         object
             array-like object, e.g. numpy, dask or xarray array
         """
-        pass
+        geom_roi = self.any_geom2ogr_geom(geom, osr_spref=src_spref)
+
+        if 'band' in self.dimensions:
+            band = int(list(set(self.inventory['band']))[0])
+            self.filter_by_dimension([band], name='band', in_place=True)  # filter datacube to only keep the remaining bands
+        else:
+            band = 1
+
+        if self.grid:
+            if src_spref is not None:
+                tar_spref = self.grid.core.projection.osr_spref
+                geom_roi = geometry.transform_geometry(geom_roi, tar_spref)
+
+            extent = geometry.get_geom_boundaries(geom_roi)
+            tilenames = list(self.inventory[name])
+            if len(list(set(tilenames))) > 1:
+                raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
+            tilename = tilenames[0]
+            i_min, j_min = self.grid.tilesys.create_tile(name=tilename).xy2ij(extent[0], extent[3])
+            i_max, j_max = self.grid.tilesys.create_tile(name=tilename).xy2ij(extent[1], extent[2])
+            inv_traffo_fun = lambda i, j: self.grid.tilesys.create_tile(name=tilename).ij2xy(i, j)
+        else:
+            filepath = self.inventory['filepath'][0]
+            file_type = self.__file_type(filepath)
+            io_class = self.__io_class(file_type)
+            ds = io_class.src
+            gdal_img = GdalImage(ds, filepath)
+            if src_spref is not None:
+                tar_spref = osr.SpatialReference()
+                tar_spref.ImportFromWkt(gdal_img.projection())
+                geom_roi = geometry.transform_geometry(geom_roi, tar_spref)
+            extent = geometry.get_geom_boundaries(geom_roi)
+            gt = gdal_img.geotransform()
+            i_min, j_max = self.xy2ij(extent[0], extent[3], gt)
+            i_max, j_min = self.xy2ij(extent[1], extent[2], gt)
+            inv_traffo_fun = lambda i, j: self.ij2xy(i, j, gt)
+
+        file_ts = {'filenames': list(self.inventory['filepath'])}
+        gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
+        row_size = j_max - j_min + 1
+        col_size = i_max - i_min + 1
+        data = gt_timestack.read_ts(i_min, j_min, col_size=col_size, row_size=row_size, decode_func=self.decode)
+
+        geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
+        data_mask = np.ones((row_size, col_size))
+        for i in range(col_size):
+            for j in range(row_size):
+                x_i, y_j = inv_traffo_fun(i_min + i, j_min + j)
+                point = Point(x_i, y_j)
+                if point.within(geom_roi):
+                    data_mask[j, i] = 0
+
+        data_mask = data_mask.astype(bool)
+        data_mask = np.broadcast_to(data_mask, data.shape)
+        data = data.astype(float)
+        data[data_mask] = np.nan
+
+        return data
 
     def load_by_coord(self, x, y, src_spref=None, name="tile"):
         if 'band' in self.dimensions:
@@ -517,10 +561,7 @@ class EODataCube(object):
                 tar_spref.ImportFromWkt(gdal_img.projection())
                 x, y = geometry.uv2xy(x, y, src_spref, tar_spref)
             gt = gdal_img.geotransform()
-            i = int(round(-1.0 * (gt[2] * gt[3] - gt[0] * gt[5] + gt[5] * x - gt[2] * y) /
-                          (gt[2] * gt[4] - gt[1] * gt[5])))
-            j = int(round(-1.0 * (-1 * gt[1] * gt[3] + gt[0] * gt[4] - gt[4] * x + gt[1] * y) /
-                          (gt[2] * gt[4] - gt[1] * gt[5])))
+            i, j = self.xy2ij(x, y, gt)
 
         file_ts = {'filenames': list(self.inventory['filepath'])}
         gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
@@ -637,6 +678,47 @@ class EODataCube(object):
             raise IOClassNotFound(self.io_md_map, file_type)
         else:
             return self.io_md_map[file_type]
+
+    # TODO: wrong place, has to be outsourced
+    @staticmethod
+    def any_geom2ogr_geom(geom, osr_spref):
+        geom_roi = None
+        if isinstance(geom, (tuple, list)) and (not isinstance(geom[0], (tuple, list))) and (
+            len(geom) == 4) and osr_spref:
+            geom_roi = geometry.extent2polygon(geom, osr_spref)
+        elif isinstance(geom, (tuple, list)) and isinstance(geom[0], (tuple, list)) and osr_spref:
+            edge = ogr.Geometry(ogr.wkbLinearRing)
+            for point in geom:
+                if len(point) == 2:
+                    edge.AddPoint(float(point[0]), float(point[1]))
+            edge.CloseRings()
+            geom_roi = ogr.Geometry(ogr.wkbPolygon)
+            geom_roi.AddGeometry(edge)
+            geom_roi.AssignSpatialReference(osr_spref)
+        elif isinstance(geom, ogr.Geometry):
+            geom_roi = geom
+        else:
+            raise GeometryUnkown(geom)
+
+        return geom_roi
+
+    # TODO: wrong place, has to be outsourced
+    @staticmethod
+    def xy2ij(x, y, gt):
+        i = int(round(-1.0 * (gt[2] * gt[3] - gt[0] * gt[5] + gt[5] * x - gt[2] * y) /
+                      (gt[2] * gt[4] - gt[1] * gt[5])))
+        j = int(round(-1.0 * (-1 * gt[1] * gt[3] + gt[0] * gt[4] - gt[4] * x + gt[1] * y) /
+                      (gt[2] * gt[4] - gt[1] * gt[5])))
+        return i, j
+
+    # TODO: wrong place, has to be outsourced
+    @staticmethod
+    def ij2xy(i, j, gt):
+        x = gt[0] + i * gt[1] + j * gt[2]
+        y = gt[3] + i * gt[4] + j * gt[5]
+        return x, y
+
+
 
     def __geometry_from_file(self, filepath):
         """

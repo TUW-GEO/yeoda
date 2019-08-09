@@ -1,7 +1,7 @@
 import numpy as np
 
 # import yeoda
-from yeoda.yeoda import EODataCube
+from products.base import ProductDataCube
 
 # import file and folder naming convention
 from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
@@ -11,17 +11,10 @@ from geopathfinder.naming_conventions.sgrt_naming import sgrt_tree
 from Equi7Grid.equi7grid.equi7grid import Equi7Grid
 
 
-class SSMDataCube(EODataCube):
+class SSMDataCube(ProductDataCube):
     def __init__(self, root_dirpath, spres=500, continent='EU', dimensions=None, inventory=None):
-        dir_tree = sgrt_tree(root_dirpath, register_file_pattern=(".tif$"))
-        grid = Equi7Grid(spres)
-        sub_grid = grid.__getattr__(continent)
-        super().__init__(dir_tree=dir_tree, grid=sub_grid, inventory=inventory, dimensions=dimensions,
-                         smart_filename_creator=create_sgrt_filename)
-        self.__check_inventory()
-
-    def __check_inventory(self):
-        pass
+        super().__init__(root_dirpath, ["SSM", "SSM-NOISE"], spres=spres, continent=continent, dimensions=dimensions,
+                         inventory=inventory)
 
     def encode(self, data):
         data *= 2

@@ -2,9 +2,11 @@ name: yeoda
 channels:
   - conda-forge
 dependencies:
+  - python=3.6
   - regex
   - netCDF4
   - geopandas
   - xarray
+  - matplotlib
   - pip:
     - pytileproj==0.0.9

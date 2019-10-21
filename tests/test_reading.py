@@ -6,7 +6,7 @@ import osr
 from osgeo import ogr
 from shapely.wkt import load
 from shapely.geometry import Polygon
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 # import yeoda
 from yeoda.yeoda import EODataCube

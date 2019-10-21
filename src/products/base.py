@@ -39,8 +39,10 @@ class ProductDataCube(EODataCube):
         """
 
         if root_dirpath is not None:
-        #if (dir_tree is None) and (root_dirpath is not None):
             dir_tree = sgrt_tree(root_dirpath, register_file_pattern=(file_pattern))
+        else:
+            dir_tree = None
+
         # ensure there is a variable dimension
         if dimensions is None:
             dimensions = ['var_name']
@@ -50,8 +52,9 @@ class ProductDataCube(EODataCube):
         grid = Equi7Grid(spres)
         sub_grid = grid.__getattr__(continent)
 
-        super().__init__(inventory=inventory, dimensions=dimensions,
-                         smart_filename_creator=create_sgrt_filename, grid=sub_grid, **kwargs)
+        super().__init__(inventory=inventory, dimensions=dimensions, smart_filename_creator=create_sgrt_filename,
+                         grid=sub_grid, dir_tree=dir_tree, **kwargs)
 
         # filter variable names
-        self.filter_by_dimension(var_names, name='var_name', in_place=True)
+        if var_names is not None:
+            self.filter_by_dimension(var_names, name='var_name', in_place=True)

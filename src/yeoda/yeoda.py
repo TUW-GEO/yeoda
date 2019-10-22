@@ -813,7 +813,8 @@ class EODataCube(object):
             boundary_extent = gdal_img.get_extent()
             boundary_spref = osr.SpatialReference()
             boundary_spref.ImportFromWkt(gdal_img.projection())
-            boundary_geom = geometry.extent2polygon(boundary_extent, boundary_spref)  # TODO: directly convert it to shapely geometry
+            bbox = [(boundary_extent[0], boundary_extent[1]), (boundary_extent[2], boundary_extent[3])]
+            boundary_geom = geometry.bbox2polygon(bbox, boundary_spref)  # TODO: directly convert it to shapely geometry
             return loads(boundary_geom.ExportToWkt())
         else:
             return
@@ -922,13 +923,13 @@ class EODataCube(object):
         """
 
         if not isinstance(values, list):
-            values = list(values)
+            values = [values]
         n_filters = len(values)
         if expressions is None:  # equal operator is the default comparison operator
             expressions = ["=="] * n_filters
         else:
             if not isinstance(expressions, list):
-                values = list(expressions)
+                values = [expressions]
 
         inventory = copy.deepcopy(self.inventory)
         filtered_inventories = []
@@ -997,7 +998,7 @@ class EODataCube(object):
         """
 
         filepaths = copy.deepcopy(self.filepaths)
-        grid = copy.deepcopy(self.grid)
+        grid = self.grid
         dir_tree = copy.deepcopy(self.dir_tree)
         smart_filename_creator = self.smart_filename_creator
         dimensions = copy.deepcopy(self.dimensions)
@@ -1006,6 +1007,26 @@ class EODataCube(object):
         return EODataCube(filepaths=filepaths, grid=grid, dir_tree=dir_tree,
                           smart_filename_creator=smart_filename_creator, dimensions=dimensions,
                           inventory=inventory)
+
+    def __getitem__(self, item):
+        """
+        Returns a column of the internal inventory according to the given column name/item.
+
+        Parameters
+        ----------
+        item: str
+            Column name of the inventory of the data cube.
+
+        Returns
+        -------
+        pandas.DataSeries
+            Column of the internal inventory.
+        """
+
+        if self.inventory is not None and item in self.inventory.columns:
+            return self.inventory[item]
+        else:
+            raise KeyError('Dimension {} is unknown.'.format(item))
 
 
 def match_dimension(dcs, name, in_place=False):

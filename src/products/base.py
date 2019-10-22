@@ -41,7 +41,10 @@ class ProductDataCube(EODataCube):
         if root_dirpath is not None:
             dir_tree = sgrt_tree(root_dirpath, register_file_pattern=(file_pattern))
         else:
-            dir_tree = None
+            if 'dir_tree' in kwargs.keys():
+                dir_tree = kwargs.pop('dir_tree')
+            else:
+                dir_tree = None
 
         # ensure there is a variable dimension
         if dimensions is None:
@@ -49,11 +52,13 @@ class ProductDataCube(EODataCube):
         elif "var_name" not in dimensions:
             dimensions.append('var_name')
 
-        grid = Equi7Grid(spres)
-        sub_grid = grid.__getattr__(continent)
+        if 'grid' in kwargs.keys():
+            grid = kwargs.pop('grid')
+        else:
+            grid = Equi7Grid(spres).__getattr__(continent)
 
         super().__init__(inventory=inventory, dimensions=dimensions, smart_filename_creator=create_sgrt_filename,
-                         grid=sub_grid, dir_tree=dir_tree, **kwargs)
+                         grid=grid, dir_tree=dir_tree, **kwargs)
 
         # filter variable names
         if var_names is not None:

@@ -1,4 +1,4 @@
-name: yeoda
+name: yeoda_test
 channels:
   - conda-forge
 dependencies:
@@ -9,4 +9,7 @@ dependencies:
   - xarray
   - matplotlib
   - pip:
-    - pytileproj==0.0.9
+    - pytileproj==0.0.12
+    - Equi7Grid==0.0.9
+    - pyraster==0.1.6
+    - git+https://github.com/TUW-GEO/geopathfinder.git # can be replaced in the future with geopathfinder==0.0.5

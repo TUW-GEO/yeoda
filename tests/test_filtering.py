@@ -5,83 +5,83 @@ import unittest
 import osr
 
 import matplotlib.pyplot as plt
+from tests.setup_test_data import setup, test_dirpath
 from datetime import datetime, timedelta
 import numpy as np
+import pandas as pd
 import itertools
 
 from geopathfinder.naming_conventions.sgrt_naming import sgrt_tree
 
 # import yeoda
 from products.ssm import SSMDataCube
-from products.preprocessed import PreprocessedDataCube
+from products.preprocessed import PreprocessedDataCube, SIG0DataCube, GMRDataCube
 
 from equi7grid.equi7grid import Equi7Grid
 from pyraster.geotiff import GeoTiffFile
 
-def cur_dirpath():
-    pth, _ = os.path.split(os.path.abspath(__file__))
-    return pth
 
 
 class FilteringTester(unittest.TestCase):
 
     def setUp(self):
-        root_dirpath = os.path.join(cur_dirpath(), 'data', 'Sentinel-1_CSAR')
-
-        # create target folders
-        sig0_dirpath = os.path.join(root_dirpath, 'IWGRDH', 'preprocessed', 'datasets', 'resampled', 'T0101',
-                                    'EQUI7_EU500M', 'E048N012T6', 'sig0')
-        gmr_dirpath = os.path.join(root_dirpath, 'IWGRDH', 'preprocessed', 'datasets', 'resampled', 'T0101',
-                                    'EQUI7_EU500M', 'E048N012T6', 'gmr')
-        if not os.path.exists(sig0_dirpath):
-            os.makedirs(sig0_dirpath)
-        if not os.path.exists(gmr_dirpath):
-            os.makedirs(gmr_dirpath)
-
-        var_names = ["SIG0", "GMR-"]
-        pols = ["VV", "VH"]
-        directions = ["A", "D"]
-        ref_datetime = datetime.now()
-        timestamps = [ref_datetime + timedelta(days=i) for i in range(1, 6)]
-        filename_fmt = "D{}_000000--_{}-----_S1AIWGRDH1{}{}_146_T0101_EU500M_E048N012T6.tif"
-        combs = itertools.product(var_names, pols, directions, timestamps)
-
-        data = np.zeros((1600, 1600))
-        equi7 = Equi7Grid(500)
-        tile_oi = equi7.EU.tilesys.create_tile(name='E048N012T6')
-
-        filepaths = []
-        for comb in combs:
-            var_name = comb[0]
-            pol = comb[1]
-            direction = comb[2]
-            timestamp = comb[3]
-            filename = filename_fmt.format(timestamp.strftime("%Y%m%d"), var_name, pol, direction)
-            if var_name == "SIG0":
-                dirpath = sig0_dirpath
-            elif var_name == "GMR-":
-                dirpath = gmr_dirpath
-            else:
-                raise Exception("Variable name {} unknown.".format(var_name))
-
-            filepath = os.path.join(dirpath, filename)
-
-            gt_file = GeoTiffFile(filepath, mode='w', count=1, geotransform=tile_oi.geotransform(),
-                                       spatialref=tile_oi.get_geotags()['spatialreference'])
-
-            data[:] = timestamps.index(timestamp)
-            gt_file.write(data, band=1, nodata=[-9999])
-            gt_file.close()
-            filepaths.append(filepath)
-
-        self.dir_tree = sgrt_tree(root_dirpath, register_file_pattern=".tif$")
+        dir_tree, timestamps = setup()
+        self.dir_tree = dir_tree
+        self.timestamps = timestamps
 
     def tearDown(self):
-        shutil.rmtree(os.path.join(cur_dirpath(), 'data'))
+        shutil.rmtree(os.path.join(test_dirpath(), 'data'))
 
     def test_filter_pols(self):
-        preprocessed_dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
-        assert len(set(preprocessed_dc.inventory['pol'])) == 2
+        dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
+        assert len(set(dc['pol'])) == 2
+        dc.filter_by_dimension("VV", name="pol", in_place=True)
+        assert len(set(dc['pol'])) == 1
+
+    def test_filter_pols_in_place(self):
+        dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
+        dc_vv = dc.filter_by_dimension("VV", name="pol")
+        dc_vh = dc.filter_by_dimension("VH", name="pol")
+        assert len(set(dc_vv['pol'])) == 1
+        assert list(set(dc_vv['pol']))[0] == "VV"
+        assert len(set(dc_vh['pol'])) == 1
+        assert list(set(dc_vh['pol']))[0] == "VH"
+
+    def test_filter_pols_clone(self):
+        dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
+        dc_clone = dc.clone()
+        dc.filter_by_dimension("VV", name="pol", in_place=True)
+        dc_clone.filter_by_dimension("VH", name="pol", in_place=True)
+        assert len(set(dc['pol'])) == 1
+        assert list(set(dc['pol']))[0] == "VV"
+        assert len(set(dc_clone['pol'])) == 1
+        assert list(set(dc_clone['pol']))[0] == "VH"
+
+    def test_filter_time(self):
+        dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
+        start_time = self.timestamps[0]
+        end_time = self.timestamps[3]
+        dc.filter_by_dimension([(start_time, end_time)], expressions=[(">=", "<=")], in_place=True)
+        assert sorted(list(set(dc['time']))) == self.timestamps[:4]
+
+    def test_split_time(self):
+        dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
+        first_time_interval = (self.timestamps[0], self.timestamps[2])
+        second_time_interval = (self.timestamps[3], self.timestamps[-1])
+        expression = (">=", "<=")
+        dcs = dc.split_by_dimension([first_time_interval, second_time_interval], expressions=[expression, expression])
+        assert len(dcs) == 2
+        assert sorted(list(set(dcs[0]['time']))) == self.timestamps[:3]
+        assert sorted(list(set(dcs[1]['time']))) == self.timestamps[3:]
+
+    def test_filter_var_names(self):
+        pre_dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
+        sig0_dc = SIG0DataCube(self.dir_tree.root, spres=500, dimensions=['time', 'pol'])
+        gmr_dc = GMRDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'pol'])
+        dc_filt_sig0 = pre_dc.filter_by_dimension("SIG0", name="var_name")
+        dc_filt_gmr = pre_dc.filter_by_dimension("GMR", name="var_name")
+        assert sorted(list(sig0_dc['filepath'])) == sorted(list(dc_filt_sig0['filepath']))
+        assert sorted(list(gmr_dc['filepath'])) == sorted(list(dc_filt_gmr['filepath']))
 
     def test_read_ts(self):
 
@@ -134,5 +134,5 @@ class FilteringTester(unittest.TestCase):
 if __name__ == '__main__':
     filtering_tester = FilteringTester()
     filtering_tester.setUp()
-    filtering_tester.test_filter_pols()
+    filtering_tester.test_filter_var_names()
     filtering_tester.tearDown()

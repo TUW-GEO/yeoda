@@ -1,6 +1,7 @@
 .. |yeoda_logo| image:: docs/imgs/yeoda_logo.png
   :width: 100 px
   :height: 50 px
+  :scale: 50 %
 
 =====
 yeoda

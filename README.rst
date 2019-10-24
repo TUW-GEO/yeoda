@@ -1,5 +1,5 @@
 .. |yeoda_logo| image:: docs/imgs/yeoda_logo.png
-  :width: 300
+  :scale: 50 %
 
 =====
 yeoda

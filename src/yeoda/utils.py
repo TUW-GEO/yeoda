@@ -1,5 +1,6 @@
 import os
 import ogr
+import re
 
 import pytileproj.geometry as geometry
 import shapely.geometry
@@ -51,7 +52,18 @@ def any_geom2ogr_geom(geom, osr_spref):
 
     if isinstance(geom, (tuple, list)) and (not isinstance(geom[0], (tuple, list))) and \
             (len(geom) == 4) and osr_spref:
-        geom_ogr = geometry.extent2polygon(geom, osr_spref)
+        geom_ogr = geometry.bbox2polygon(geom, osr_spref)
+    elif isinstance(geom, (tuple, list)) and (isinstance(geom[0], (tuple, list))) and \
+            (len(geom) == 2) and osr_spref:
+        edge = ogr.Geometry(ogr.wkbLinearRing)
+        geom = [geom[0], (geom[0][0], geom[1][1]), geom[1], (geom[1][0], geom[0][1])]
+        for point in geom:
+            if len(point) == 2:
+                edge.AddPoint(float(point[0]), float(point[1]))
+        edge.CloseRings()
+        geom_ogr = ogr.Geometry(ogr.wkbPolygon)
+        geom_ogr.AddGeometry(edge)
+        geom_ogr.AssignSpatialReference(osr_spref)
     elif isinstance(geom, (tuple, list)) and isinstance(geom[0], (tuple, list)) and osr_spref:
         edge = ogr.Geometry(ogr.wkbLinearRing)
         for point in geom:
@@ -82,7 +94,7 @@ def xy2ij(x, y, gt):
         World system coordinate in X direction.
     y: float
         World system coordinate in Y direction.
-    gt: dict
+    gt: tuple
         Geo-transformation parameters/dictionary.
 
     Returns
@@ -124,3 +136,4 @@ def ij2xy(i, j, gt):
     x = gt[0] + i * gt[1] + j * gt[2]
     y = gt[3] + i * gt[4] + j * gt[5]
     return x, y
+

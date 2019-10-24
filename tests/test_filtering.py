@@ -2,35 +2,28 @@
 import os
 import shutil
 import unittest
-import osr
 
-import matplotlib.pyplot as plt
-from tests.setup_test_data import setup, test_dirpath
-from datetime import datetime, timedelta
-import numpy as np
-import pandas as pd
-import itertools
+from tests.setup_test_data import setup_test_data, dirpath_test, roi_test
 
-from geopathfinder.naming_conventions.sgrt_naming import sgrt_tree
 
 # import yeoda
-from products.ssm import SSMDataCube
 from products.preprocessed import PreprocessedDataCube, SIG0DataCube, GMRDataCube
-
-from equi7grid.equi7grid import Equi7Grid
-from pyraster.geotiff import GeoTiffFile
-
 
 
 class FilteringTester(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        setup_test_data()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(os.path.join(dirpath_test(), 'data'))
+
     def setUp(self):
-        dir_tree, timestamps = setup()
+        dir_tree, timestamps = setup_test_data(initialise=False)
         self.dir_tree = dir_tree
         self.timestamps = timestamps
-
-    def tearDown(self):
-        shutil.rmtree(os.path.join(test_dirpath(), 'data'))
 
     def test_filter_pols(self):
         dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
@@ -60,19 +53,9 @@ class FilteringTester(unittest.TestCase):
     def test_filter_time(self):
         dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
         start_time = self.timestamps[0]
-        end_time = self.timestamps[3]
+        end_time = self.timestamps[1]
         dc.filter_by_dimension([(start_time, end_time)], expressions=[(">=", "<=")], in_place=True)
-        assert sorted(list(set(dc['time']))) == self.timestamps[:4]
-
-    def test_split_time(self):
-        dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
-        first_time_interval = (self.timestamps[0], self.timestamps[2])
-        second_time_interval = (self.timestamps[3], self.timestamps[-1])
-        expression = (">=", "<=")
-        dcs = dc.split_by_dimension([first_time_interval, second_time_interval], expressions=[expression, expression])
-        assert len(dcs) == 2
-        assert sorted(list(set(dcs[0]['time']))) == self.timestamps[:3]
-        assert sorted(list(set(dcs[1]['time']))) == self.timestamps[3:]
+        assert sorted(list(set(dc['time']))) == self.timestamps[:2]
 
     def test_filter_var_names(self):
         pre_dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
@@ -83,56 +66,33 @@ class FilteringTester(unittest.TestCase):
         assert sorted(list(sig0_dc['filepath'])) == sorted(list(dc_filt_sig0['filepath']))
         assert sorted(list(gmr_dc['filepath'])) == sorted(list(dc_filt_gmr['filepath']))
 
-    def test_read_ts(self):
+    def test_filter_files_with_pattern(self):
+        pre_dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol'])
+        sig0_dc = SIG0DataCube(self.dir_tree.root, spres=500, dimensions=['time', 'pol'])
+        pre_dc.filter_files_with_pattern(".*SIG0.*", in_place=True)
+        assert sorted(list(sig0_dc['filepath'])) == sorted(list(pre_dc['filepath']))
 
-        root_dirpath = os.path.join(self.path, 'Sentinel-1_CSAR')
-        lon = 15.5352
-        lat = 48.1724
-        src_spref = osr.SpatialReference()
-        src_spref.ImportFromEPSG(4326)
+    def test_filter_spatially_by_tilename(self):
+        dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol', 'tile_name'])
+        assert len(set(dc['tile_name'])) == 2
+        dc.filter_spatially_by_tilename("E042N012T6", dimension_name='tile_name', in_place=True)
+        assert len(set(dc['tile_name'])) == 1
+        assert list(set(dc['tile_name']))[0] == "E042N012T6"
 
-        ssm_dc = SSMDataCube(root_dirpath, spres=500, continent='EU', dimensions=['time', 'tile_name', 'var_name'])
-        ssm_dc.rename_dimensions({'tile_name': 'tile'}, in_place=True)
-        ssm_dc.filter_spatially_by_tilename(tilenames="E048N012T6", in_place=True)
+    def test_filter_spatially_by_geom(self):
+        dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'var_name', 'pol', 'tile_name'])
+        bbox, sref = roi_test()
+        assert len(set(dc['tile_name'])) == 2
+        dc.filter_spatially_by_geom(bbox, sref=sref, dimension_name='tile_name', in_place=True)
+        assert len(set(dc['tile_name'])) == 1
+        assert list(set(dc['tile_name']))[0] == "E042N012T6"
 
-        data = ssm_dc.load_by_coord(lon, lat, src_spref=src_spref)
-
-        # prepare data for plotting
-        ssm = data.flatten().tolist()
-        timestamps = ssm_dc.inventory['time']
-        # plot the data
-        plt.figure()
-        plt.stem(timestamps, ssm)
-        plt.show()
-
-        plt.close()
-        fig, ax = None, None
-
-        pass
-
-    def test_filter_spatially(self):
-
-        root_dirpath = os.path.join(self.path, 'Sentinel-1_CSAR')
-        roi = Polygon([(4373136, 1995726), (4373136, 3221041), (6311254, 3221041), (6311254, 1995726)])
-        st = sgrt_tree(root_dirpath, register_file_pattern=(".tif$"))
-        eodc = EODataCube(dir_tree=st, smart_filename_creator=create_sgrt_filename,
-                          dimensions=['time', 'tile_name', 'pol'], ignore_metadata=False)
-
-
-        fig, ax = plt.subplots(1, 1)
-
-        eodc.inventory.drop_duplicates(subset=['tile_name']).plot(ax=ax, edgecolor='red', facecolor="none")
-        eodc_roi = eodc.filter_spatially(roi=roi)
-        eodc_roi.inventory.drop_duplicates(subset=['tile_name']).plot(ax=ax, edgecolor='blue', facecolor="none")
-        plt.show()
-
-        plt.close()
-        fig, ax = None, None
-
-        pass
+    def test_filter_by_metadata(self):
+        dc = PreprocessedDataCube(self.dir_tree.root, spres=500, dimensions=['time', 'orbit_direction'])
+        assert len(set(dc['orbit_direction'])) == 2
+        dc.filter_by_metadata({'direction': 'D'}, in_place=True)
+        assert len(set(dc['orbit_direction'])) == 1
+        assert list(set(dc['orbit_direction']))[0] == "D"
 
 if __name__ == '__main__':
-    filtering_tester = FilteringTester()
-    filtering_tester.setUp()
-    filtering_tester.test_filter_var_names()
-    filtering_tester.tearDown()
+    unittest.main()

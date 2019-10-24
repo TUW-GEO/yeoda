@@ -58,6 +58,7 @@ class EODataCube(object):
             Map that represents the relation of an EO file type (e.g. GeoTiff) with a metadata tag - dimension mapping
             of the files, e.g. {1: 'SSM', 2: 'SSM-NOISE'}
         """
+
         # initialise simple class variables
         self.dir_tree = dir_tree
         self.smart_filename_creator = smart_filename_creator
@@ -209,13 +210,13 @@ class EODataCube(object):
             EODataCube object with a filtered inventory according to the given pattern.
         """
 
-        if self.inventory:
+        if self.inventory is not None:
             filepaths = self.inventory['filepath']
             pattern = re.compile(pattern)
             if not full_path:
-                file_filter = lambda x: re.match(os.path.basename(x), pattern)
+                file_filter = lambda x: re.match(pattern, os.path.basename(x)) is not None
             else:
-                file_filter = lambda x: re.match(x, pattern)
+                file_filter = lambda x: re.match(pattern, x) is not None
             idx_filter = [file_filter(filepath) for filepath in filepaths]
             inventory = self.inventory[idx_filter]
             return self.__assign_inventory(inventory, in_place=in_place)
@@ -244,11 +245,12 @@ class EODataCube(object):
         filepaths = self.inventory['filepath']  # use inventory to ensure the same order
         for filepath in filepaths:
             io_class = self.__io_class(get_file_type(filepath))
-            ds = io_class.src  # IO class has to have a "src" class variable which is a pointer to the data set
+            io_instance = io_class(filepath, mode='r')  # IO class has to have a "src" class variable which is a pointer to the data set
+            ds = io_instance.src
 
             select = False
             if ds:
-                ds_metadata = ds.get_metadata()
+                ds_metadata = ds.GetMetadata()
                 select = True
                 for key, value in metadata.items():
                     if key not in ds_metadata.keys():
@@ -256,7 +258,8 @@ class EODataCube(object):
                     else:
                         if ds_metadata[key] != value:
                             select = False
-
+            # close data set
+            io_instance.close()
             bool_filter.append(select)
 
         inventory = self.inventory[bool_filter]
@@ -405,15 +408,18 @@ class EODataCube(object):
         geom_roi = any_geom2ogr_geom(geom, osr_spref=sref)
 
         if self.grid:
-            tilenames = self.grid.search_tiles_in_roi(geom_area=geom_roi)
+            ftilenames = self.grid.search_tiles_over_geometry(geom_roi)
+            tilenames = [ftilename.split('_')[1] for ftilename in ftilenames]
             self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, in_place=in_place,
                                               use_grid=False)
         elif self.inventory is not None and 'geometry' in self.inventory.keys():
+            # get spatial reference of data
+            geom_roi = self.align_geom(geom_roi)
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
             inventory = self.inventory[self.inventory.intersects(geom_roi)]
             return self.__assign_inventory(inventory, in_place=in_place)
 
-    def get_monthly_dcs(self, name='time', months=None):
+    def split_monthly(self, name='time', months=None):
         """
         Separates the data cube into months.
 
@@ -421,7 +427,7 @@ class EODataCube(object):
         ----------
         name: str, optional
             Name of the dimension.
-        months: list of integers
+        months: int, list of int
             List of integers specifying the months to select/split, i.e. each value is allowed to be in between 1-12.
 
         Returns
@@ -430,10 +436,12 @@ class EODataCube(object):
         """
 
         sort = False
-        yearly_eodcs = self.get_yearly_dcs(name=name)
+        yearly_eodcs = self.split_yearly(name=name)
         monthly_eodcs = []
         for yearly_eodc in yearly_eodcs:
             if months:
+                if not isinstance(months, list):
+                    months = [months]
                 # initialise empty dict keeping track of the months
                 timestamps_months = {}
                 for month in months:
@@ -466,7 +474,7 @@ class EODataCube(object):
 
         return monthly_eodcs
 
-    def get_yearly_dcs(self, name='time', years=None):
+    def split_yearly(self, name='time', years=None):
         """
         Separates the data cube into years.
 
@@ -474,7 +482,7 @@ class EODataCube(object):
         ----------
         name: str, optional
             Name of the dimension.
-        years: list of integers
+        years: int, list of int
             List of integers specifying the years to select/split.
 
         Returns
@@ -484,6 +492,8 @@ class EODataCube(object):
 
         sort = False
         if years:
+            if not isinstance(years, list):
+                years = [years]
             # initialise empty dict keeping track of the years
             timestamps_years = {}
             for year in years:
@@ -514,7 +524,7 @@ class EODataCube(object):
 
         return self.split_by_dimension(values, expressions, name=name)
 
-    def load_by_geom(self, geom, sref=None, name="tile"):
+    def load_by_geom(self, geom, sref=None, dimension_name="tile", apply_mask=True):
         """
         Loads data as an array.
 
@@ -526,8 +536,10 @@ class EODataCube(object):
             georeferenced polygon.
         sref: osr.SpatialReference, optional
             Spatial reference of the given region of interest `geom`.
-        name: str, optional
+        dimension_name: str, optional
             Name of the spatial dimension (default: "tile").
+        apply_mask: bool, optional
+            If true, all pixels being outside of the specified geometry are masked with np.nan.
 
         Returns
         -------
@@ -549,52 +561,46 @@ class EODataCube(object):
                 tar_spref = self.grid.core.projection.osr_spref
                 geom_roi = geometry.transform_geometry(geom_roi, tar_spref)
 
-            extent = geometry.get_geom_boundaries(geom_roi)
-            tilenames = list(self.inventory[name])
+            extent = geometry.get_geometry_envelope(geom_roi)
+            tilenames = list(self.inventory[dimension_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
             i_min, j_min = self.grid.tilesys.create_tile(name=tilename).xy2ij(extent[0], extent[3])
-            i_max, j_max = self.grid.tilesys.create_tile(name=tilename).xy2ij(extent[1], extent[2])
+            i_max, j_max = self.grid.tilesys.create_tile(name=tilename).xy2ij(extent[2], extent[1])
             inv_traffo_fun = lambda i, j: self.grid.tilesys.create_tile(name=tilename).ij2xy(i, j)
         else:
-            filepath = self.inventory['filepath'][0]
-            io_class = self.__io_class(get_file_type(filepath))
-            ds = io_class.src
-            gdal_img = GdalImage(ds, filepath)
-            if sref is not None:
-                tar_spref = osr.SpatialReference()
-                tar_spref.ImportFromWkt(gdal_img.projection())
-                geom_roi = geometry.transform_geometry(geom_roi, tar_spref)
-            extent = geometry.get_geom_boundaries(geom_roi)
-            gt = gdal_img.geotransform()
-            i_min, j_max = xy2ij(extent[0], extent[3], gt)
-            i_max, j_min = xy2ij(extent[1], extent[2], gt)
-            inv_traffo_fun = lambda i, j: ij2xy(i, j, gt)
+            this_sref, this_gt = self.__get_georef()
+            geom_roi = geometry.transform_geometry(geom_roi, this_sref)
+            extent = geometry.get_geometry_envelope(geom_roi)
+            i_min, j_min = xy2ij(extent[0], extent[3], this_gt)
+            i_max, j_max = xy2ij(extent[2], extent[1], this_gt)
+            inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt)
 
         file_ts = {'filenames': list(self.inventory['filepath'])}
-        gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
+        gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
         row_size = j_max - j_min + 1
         col_size = i_max - i_min + 1
-        data = gt_timestack.read_ts(i_min, j_min, col_size=col_size, row_size=row_size, decode_func=self.decode)
+        data = self.decode(gt_timestack.read_ts(i_min, j_min, col_size=col_size, row_size=row_size))
 
-        geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
-        data_mask = np.ones((row_size, col_size))
-        for i in range(col_size):
-            for j in range(row_size):
-                x_i, y_j = inv_traffo_fun(i_min + i, j_min + j)
-                point = Point(x_i, y_j)
-                if point.within(geom_roi):
-                    data_mask[j, i] = 0
+        if apply_mask:
+            geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
+            data_mask = np.ones((row_size, col_size))
+            for i in range(col_size):
+                for j in range(row_size):
+                    x_i, y_j = inv_traffo_fun(i_min + i, j_min + j)
+                    point = Point(x_i, y_j)
+                    if point.within(geom_roi):
+                        data_mask[j, i] = 0
 
-        data_mask = data_mask.astype(bool)
-        data_mask = np.broadcast_to(data_mask, data.shape)
-        data = data.astype(float)
-        data[data_mask] = np.nan
+            data_mask = data_mask.astype(bool)
+            data_mask = np.broadcast_to(data_mask, data.shape)
+            data = data.astype(float)
+            data[data_mask] = np.nan
 
         return data
 
-    def load_by_coord(self, x, y, sref=None, name="tile"):
+    def load_by_coord(self, x, y, sref=None, dimension_name="tile"):
         """
         Loads data as a 1-D array according to a given coordinate.
 
@@ -606,7 +612,7 @@ class EODataCube(object):
             World system coordinate in Y direction.
         sref: osr.SpatialReference, optional
             Spatial reference referring to the world system coordinates `x` and `y`.
-        name: str, optional
+        dimension_name: str, optional
             Name of the spatial dimension (default: "tile").
 
         Returns
@@ -626,27 +632,20 @@ class EODataCube(object):
             if sref is not None:
                 tar_spref = self.grid.core.projection.osr_spref
                 x, y = geometry.uv2xy(x, y, sref, tar_spref)
-            tilenames = list(self.inventory[name])
+            tilenames = list(self.inventory[dimension_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
             i, j = self.grid.tilesys.create_tile(name=tilename).xy2ij(x, y)
         else:
-            filepath = self.inventory['filepath'][0]
-            io_class = self.__io_class(get_file_type(filepath))
-            ds = io_class.src
-            gdal_img = GdalImage(ds, filepath)
-            if sref is not None:
-                tar_spref = osr.SpatialReference()
-                tar_spref.ImportFromWkt(gdal_img.projection())
-                x, y = geometry.uv2xy(x, y, sref, tar_spref)
-            gt = gdal_img.geotransform()
-            i, j = xy2ij(x, y, gt)
+            this_sref, this_gt = self.__get_georef()
+            x, y = geometry.uv2xy(x, y, sref, this_sref)
+            i, j = xy2ij(x, y, this_gt)
 
         file_ts = {'filenames': list(self.inventory['filepath'])}
-        gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
+        gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
 
-        return gt_timestack.read_ts(i, j, decode_func=self.decode).flatten()
+        return self.decode(gt_timestack.read_ts(i, j)).flatten()
 
     def encode(self, data):
         """
@@ -681,19 +680,19 @@ class EODataCube(object):
         """
         return data
 
-    def merge(self, dc_other, name=None, in_place=False):
+    def unite(self, dc_other, drop_unalike_dims=True, in_place=False):
         """
-        Merges this data cube with respect to another data cube along the specified dimension.
+        Unites this data cube with respect to another data cube.
 
         Parameters
         ----------
         dc_other: EODataCube
             Data cube to merge with.
-        name: str, optional
-            Name of the dimension.
+        drop_unalike_dims: bool, optional
+            If true, unalike dimensions of all data cubes are removed (default is True).
         in_place: boolean, optional
             If true, the current class instance will be altered.
-            If false, a new class instance will be returned (default value is False).
+            If false, a new class instance will be returned (default is False).
 
         Returns
         -------
@@ -701,7 +700,7 @@ class EODataCube(object):
             Merged data cube.
         """
 
-        dc_merged = merge_datacubes([self, dc_other], name=name)
+        dc_merged = unite_datacubes([self, dc_other], drop_unalike_dims=drop_unalike_dims)
         return self.__assign_inventory(dc_merged.inventory, in_place=in_place)
 
     def match_dimension(self, dc_other, name, in_place=False):
@@ -738,6 +737,56 @@ class EODataCube(object):
         """
 
         return copy.deepcopy(self)
+
+    def align_geom(self, geom, sref=None):
+        """
+        Transforms a geometry into the (geo-)spatial representation of the data cube.
+
+        Parameters
+        ----------
+        geom: OGR Geometry or Shapely Geometry or list or tuple, optional
+            A geometry defining the region of interest. If it is of type list/tuple representing the extent
+            (i.e. [x_min, y_min, x_max, y_max]), `sref` has to be given to transform the extent into a
+            georeferenced polygon.
+        sref: osr.SpatialReference, optional
+            Spatial reference of the given region of interest `geom`.
+
+        Returns
+        -------
+        geom: ogr.Geometry
+            Geometry with the (geo-)spatial reference of the data cube.
+        """
+
+        geom = any_geom2ogr_geom(geom, osr_spref=sref)
+        this_sref, _ = self.__get_georef()
+        geom = geometry.transform_geometry(geom, this_sref)
+
+        return geom
+
+    def __get_georef(self):
+        """
+        Retrieves georeference consisting of the spatialreference and the transformation parameters from the first file
+        in the data cube.
+
+        Returns
+        -------
+        this_sref: osr.SpatialReference()
+            Spatial reference of data cube based on the first file.
+        this_gt: tuple
+            Geotransformation parameters based on the first file.
+        """
+
+        filepath = self['filepath'].iloc[0]
+        io_class = self.__io_class(get_file_type(filepath))
+        io_instance = io_class(filepath, mode='r')
+        ds = io_instance.src
+        gdal_img = GdalImage(ds, filepath)
+        this_sref = osr.SpatialReference()
+        this_sref.ImportFromWkt(gdal_img.projection())
+        this_gt = list(gdal_img.geotransform())
+        # close data set
+        io_instance.close()
+        return this_sref, tuple(this_gt)
 
     def __io_class(self, file_type):
         """
@@ -806,7 +855,8 @@ class EODataCube(object):
 
         file_type = get_file_type(filepath)
         io_class = self.__io_class(file_type)
-        ds = io_class(filepath).src
+        io_instance = io_class(filepath)
+        ds = io_instance.src
 
         if ds:
             gdal_img = GdalImage(ds, filepath)
@@ -815,6 +865,8 @@ class EODataCube(object):
             boundary_spref.ImportFromWkt(gdal_img.projection())
             bbox = [(boundary_extent[0], boundary_extent[1]), (boundary_extent[2], boundary_extent[3])]
             boundary_geom = geometry.bbox2polygon(bbox, boundary_spref)  # TODO: directly convert it to shapely geometry
+            # close data set
+            io_instance.close()
             return loads(boundary_geom.ExportToWkt())
         else:
             return
@@ -863,7 +915,9 @@ class EODataCube(object):
                     file_type = get_file_type(filepath)
                     io_class = self.__io_class(file_type)
                     io_md_map = self.__io_md_map(file_type)
-                    metadata = io_class(filepath).get_dimensions_info(map=io_md_map[file_type])
+                    io_instance = io_class(filepath)
+                    metadata = io_instance.get_dimensions_info(map=io_md_map[file_type])
+                    io_instance.close()  # close data set
                     for key, value in metadata.items():
                         local_inventory[key] = value
 
@@ -1028,6 +1082,18 @@ class EODataCube(object):
         else:
             raise KeyError('Dimension {} is unknown.'.format(item))
 
+    def __len__(self):
+        """
+        Returns number of inventory/data entries.
+
+        Returns
+        -------
+        int
+            Number of inventory/data entries.
+        """
+
+        return len(self.inventory)
+
 
 def match_dimension(dcs, name, in_place=False):
     """
@@ -1050,43 +1116,51 @@ def match_dimension(dcs, name, in_place=False):
         Each value matches all data cubes along the given dimension.
     """
 
-    values = []
-    for dc in dcs:
-        values.extend(dc.inventory[name])
-
-    unique_values = pd.unique(values)
+    # find common values along the specified dimension of all data cubes
+    value_set = set(dcs[0].inventory[name])
+    for dc in dcs[1:]:
+        value_set &= set(dc.inventory[name])
+    matching_values = list(value_set)
 
     matched_dcs = []
     for dc in dcs:
-        expressions = [('==')]*len(unique_values)
-        matched_dcs.append(dc.filter_by_dimension(unique_values, expressions=expressions, name=name, in_place=in_place))
+        expressions = ['==']*len(matching_values)
+        matched_dcs.append(dc.filter_by_dimension(matching_values, expressions=expressions, name=name,
+                                                  in_place=in_place))
 
     return matched_dcs
 
 
-def merge_datacubes(dcs, name=None):
+def unite_datacubes(dcs, drop_unalike_dims=True):
     """
-    Merges data cubes into one data cube. By doing so, duplicates are removed and only
-    common dimensions are kept.
+    Merges data cubes into one data cube.
+    This is equal to an SQL UNION operation except unalike dimensions are removed if `drop_unalike_dims` is true.
 
     Parameters
     ----------
     dcs: list of EODataCube objects
-       List of data cubes, which should be united based on the common set of dimensions.
-    name: str
-        Name of the dimension, which is used for aligning/filtering the values for all data cubes.
+       List of data cubes, which should be united.
+    drop_unalike_dims: bool, optional
+        If true, unalike dimensions of all data cubes are removed (default True).
 
     Returns
     -------
     EODataCube
-        Data cube containing all information of the given data cubes except duplicates and
-        inconsistent dimensions.
+        Data cube containing all information of the given data cubes.
     """
 
-    merged_inventory = dcs[0].inventory
-    dcs = dcs[1:]
-    for dc in dcs:
-        merged_inventory = merged_inventory.merge(dc.inventory, on=name)
+    # remove uncommon columns
+    if drop_unalike_dims:
+        column_sets = [set(dc.inventory.columns) for dc in dcs]
+        common_keys = column_sets[0]
+        for column_set in column_sets[1:]:
+            common_keys &= column_set
+        inventories = [dc.inventory[common_keys] for dc in dcs]
+    else:
+        inventories = [dc.inventory for dc in dcs]
+
+    # this is a SQL alike UNION operation
+    merged_inventory = pd.concat(inventories, ignore_index=True).drop_duplicates().reset_index(drop=True)
 
     dc_merged = EODataCube.from_inventory(merged_inventory, grid=dcs[0].grid, dir_tree=dcs[0].dir_tree)
 

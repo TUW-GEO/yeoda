@@ -1,7 +1,7 @@
 ## yeoda
 
 
-![](./docs/imgs/yeoda_logo.png=250x)
+<img align="right" src="./docs/imgs/yeoda_logo.png" >
 
 
 A filename based data cube

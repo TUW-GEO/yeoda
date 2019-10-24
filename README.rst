@@ -1,5 +1,6 @@
 .. |yeoda_logo| image:: docs/imgs/yeoda_logo.png
-  :width: 50 %
+  :width: 100 px
+  :align: right
 
 =====
 yeoda

@@ -17,8 +17,7 @@ from shapely.geometry import Point
 import pytileproj.geometry as geometry
 from pyraster.geotiff import GeoTiffFile
 from pyraster.netcdf import NcFile
-from pyraster.gdalport import GdalImage
-from pyraster.timestack import GeoTiffRasterTimeStack
+from pyraster.timestack import GeoTiffRasterTimeStack, NcRasterTimeStack
 from yeoda.utils import get_file_type, any_geom2ogr_geom, xy2ij, ij2xy
 
 # error packages
@@ -600,7 +599,7 @@ class EODataCube(object):
 
         return data
 
-    def load_by_coord(self, x, y, sref=None, dimension_name="tile"):
+    def load_by_coord(self, x, y, sref=None, band=1, dimension_name="tile"):
         """
         Loads data as a 1-D array according to a given coordinate.
 
@@ -621,13 +620,6 @@ class EODataCube(object):
             Data as an 1-D array-like object.
         """
 
-        if 'band' in self.dimensions:
-            band = int(list(set(self.inventory['band']))[0])
-            # filter datacube to only keep the remaining bands
-            self.filter_by_dimension([band], name='band', in_place=True)
-        else:
-            band = 1
-
         if self.grid:
             if sref is not None:
                 tar_spref = self.grid.core.projection.osr_spref
@@ -642,10 +634,21 @@ class EODataCube(object):
             x, y = geometry.uv2xy(x, y, sref, this_sref)
             i, j = xy2ij(x, y, this_gt)
 
-        file_ts = {'filenames': list(self.inventory['filepath'])}
-        gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-
-        return self.decode(gt_timestack.read_ts(i, j)).flatten()
+        file_type = get_file_type(self.inventory['filepath'][0])
+        if file_type == "GeoTIFF":
+            file_ts = {'filenames': list(self.inventory['filepath'])}
+            gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
+            return self.decode(gt_timestack.read_ts(i, j)).flatten()
+        elif file_type == "NetCDF":
+            data = []
+            for filepath in self.inventory['filepath']:
+                nc_file = NcFile(filepath, mode='r')
+                data_i = nc_file.read()
+                try:
+                    data.append(data_i[band][0, i, j].data)
+                except:
+                    print(data_i.dims)
+            return self.decode(np.array(data).flatten())
 
     def encode(self, data):
         """
@@ -779,11 +782,9 @@ class EODataCube(object):
         filepath = self['filepath'].iloc[0]
         io_class = self.__io_class(get_file_type(filepath))
         io_instance = io_class(filepath, mode='r')
-        ds = io_instance.src
-        gdal_img = GdalImage(ds, filepath)
         this_sref = osr.SpatialReference()
-        this_sref.ImportFromWkt(gdal_img.projection())
-        this_gt = list(gdal_img.geotransform())
+        this_sref.ImportFromWkt(io_instance.spatialref)
+        this_gt = io_instance.geotransform
         # close data set
         io_instance.close()
         return this_sref, tuple(this_gt)
@@ -855,21 +856,17 @@ class EODataCube(object):
 
         file_type = get_file_type(filepath)
         io_class = self.__io_class(file_type)
-        io_instance = io_class(filepath)
-        ds = io_instance.src
+        io_instance = io_class(filepath, mode='r')
+        gt = io_instance.geotransform
+        boundary_extent = (gt[0], gt[3] + io_instance.shape[0] * gt[5], gt[0] + io_instance.shape[1] * gt[1], gt[3])
+        boundary_spref = osr.SpatialReference()
+        boundary_spref.ImportFromWkt(io_instance.spatialref)
+        bbox = [(boundary_extent[0], boundary_extent[1]), (boundary_extent[2], boundary_extent[3])]
+        boundary_geom = geometry.bbox2polygon(bbox, boundary_spref)
+        # close data set
+        io_instance.close()
 
-        if ds:
-            gdal_img = GdalImage(ds, filepath)
-            boundary_extent = gdal_img.get_extent()
-            boundary_spref = osr.SpatialReference()
-            boundary_spref.ImportFromWkt(gdal_img.projection())
-            bbox = [(boundary_extent[0], boundary_extent[1]), (boundary_extent[2], boundary_extent[3])]
-            boundary_geom = geometry.bbox2polygon(bbox, boundary_spref)  # TODO: directly convert it to shapely geometry
-            # close data set
-            io_instance.close()
-            return loads(boundary_geom.ExportToWkt())
-        else:
-            return
+        return loads(boundary_geom.ExportToWkt())
 
     def __inventory_from_filepaths(self, smart_filename_creator=None, ignore_metadata=True):
         """

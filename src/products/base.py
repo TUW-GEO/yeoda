@@ -6,7 +6,7 @@ from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
 from geopathfinder.naming_conventions.sgrt_naming import sgrt_tree
 
 # import grid
-from Equi7Grid.equi7grid.equi7grid import Equi7Grid
+from equi7grid.equi7grid import Equi7Grid
 
 
 class ProductDataCube(EODataCube):

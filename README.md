@@ -1,4 +1,4 @@
-<img align="right" src="./docs/imgs/yeoda_logo.png" height="400" width="580">
+<img align="right" src="./docs/imgs/yeoda_logo.png" height="300" width="435">
 
 ## yeoda
 

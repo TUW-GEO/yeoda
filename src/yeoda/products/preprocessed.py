@@ -1,7 +1,7 @@
 import numpy as np
 
 # import yeoda
-from products.base import ProductDataCube
+from yeoda.products.base import ProductDataCube
 
 
 class PreprocessedDataCube(ProductDataCube):

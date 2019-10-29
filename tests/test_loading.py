@@ -7,7 +7,7 @@ import numpy as np
 
 from tests.setup_test_data import setup_test_data, dirpath_test, roi_test
 from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
-from yeoda.yeoda import EODataCube
+from yeoda.datacube import EODataCube
 
 
 class LoadingTester(unittest.TestCase):

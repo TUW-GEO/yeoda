@@ -576,11 +576,21 @@ class EODataCube(object):
             i_max, j_max = xy2ij(extent[2], extent[1], this_gt)
             inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt)
 
-        file_ts = {'filenames': list(self.inventory['filepath'])}
-        gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
         row_size = j_max - j_min + 1
         col_size = i_max - i_min + 1
-        data = self.decode(gt_timestack.read_ts(i_min, j_min, col_size=col_size, row_size=row_size))
+        file_type = get_file_type(self.inventory['filepath'][0])
+        if file_type == "GeoTIFF":
+            file_ts = {'filenames': list(self.inventory['filepath'])}
+            gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
+            data = self.decode(gt_timestack.read_ts(i_min, j_min, col_size=col_size, row_size=row_size))
+        elif file_type == "NetCDF":
+            data = np.zeros((len(self), row_size, col_size))
+            for i, filepath in enumerate(self.inventory['filepath']):
+                nc_file = NcFile(filepath, mode='r')
+                data_i = nc_file.read()
+                data[i, :, :] = (data_i[band][0, j_min:(j_max+1), i_min:(i_max+1)].data) # assumes data has only one timestamp
+
+            data = self.decode(data)
 
         if apply_mask:
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
@@ -644,10 +654,8 @@ class EODataCube(object):
             for filepath in self.inventory['filepath']:
                 nc_file = NcFile(filepath, mode='r')
                 data_i = nc_file.read()
-                try:
-                    data.append(data_i[band][0, i, j].data)
-                except:
-                    print(data_i.dims)
+                data.append(data_i[band][0, i, j].data)  # assumes data has only one timestamp
+
             return self.decode(np.array(data).flatten())
 
     def encode(self, data):

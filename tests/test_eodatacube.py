@@ -9,7 +9,7 @@ from tests.setup_test_data import setup_test_data, dirpath_test
 from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
 
 # import yeoda
-from yeoda.yeoda import EODataCube
+from yeoda.datacube import EODataCube
 
 
 class EODataCubeTester(unittest.TestCase):

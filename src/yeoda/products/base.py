@@ -1,5 +1,5 @@
 # import yeoda
-from yeoda.yeoda import EODataCube
+from yeoda.datacube import EODataCube
 
 # import file and folder naming convention
 from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename

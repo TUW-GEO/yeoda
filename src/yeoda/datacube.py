@@ -15,9 +15,9 @@ from geopandas import GeoDataFrame
 import shapely.wkt
 from shapely.geometry import Point
 import pytileproj.geometry as geometry
-from pyraster.geotiff import GeoTiffFile
-from pyraster.netcdf import NcFile
-from pyraster.timestack import GeoTiffRasterTimeStack, NcRasterTimeStack
+from veranda.geotiff import GeoTiffFile
+from veranda.netcdf import NcFile
+from veranda.timestack import GeoTiffRasterTimeStack
 from yeoda.utils import get_file_type, any_geom2ogr_geom, xy2ij, ij2xy
 
 # error packages
@@ -81,7 +81,7 @@ class EODataCube(object):
             self.filepaths = filepaths
         elif dir_tree:
             self.filepaths = dir_tree.file_register
-        elif inventory:
+        elif inventory is not None:
             self.filepaths = inventory['filepath']
 
         # create list of dimensions
@@ -1038,7 +1038,7 @@ class EODataCube(object):
 
         if in_place:
             self.inventory = inventory
-            return self
+            return None
         else:
             return self.from_inventory(inventory=inventory, grid=self.grid, dir_tree=self.dir_tree)
 

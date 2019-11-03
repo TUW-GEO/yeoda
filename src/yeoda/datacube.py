@@ -5,6 +5,7 @@ import re
 import itertools
 import pandas as pd
 import numpy as np
+import xarray as xr
 from collections import OrderedDict
 
 # geo packages
@@ -23,6 +24,7 @@ from yeoda.utils import get_file_type, any_geom2ogr_geom, xy2ij, ij2xy
 # error packages
 from yeoda.errors import IOClassNotFound
 from yeoda.errors import TileNotAvailable
+from yeoda.errors import FileTypeUnknown
 
 
 class EODataCube(object):
@@ -523,7 +525,7 @@ class EODataCube(object):
 
         return self.split_by_dimension(values, expressions, name=name)
 
-    def load_by_geom(self, geom, sref=None, dimension_name="tile", apply_mask=True):
+    def load_by_geom(self, geom, sref=None, dimension_name="tile", band=1, apply_mask=True):
         """
         Loads data as an array.
 
@@ -548,13 +550,6 @@ class EODataCube(object):
 
         geom_roi = any_geom2ogr_geom(geom, osr_spref=sref)
 
-        if 'band' in self.dimensions:
-            band = int(list(set(self.inventory['band']))[0])
-            # filter datacube to only keep the remaining bands
-            self.filter_by_dimension([band], name='band', in_place=True)
-        else:
-            band = 1
-
         if self.grid:
             if sref is not None:
                 tar_spref = self.grid.core.projection.osr_spref
@@ -578,20 +573,6 @@ class EODataCube(object):
 
         row_size = j_max - j_min + 1
         col_size = i_max - i_min + 1
-        file_type = get_file_type(self.inventory['filepath'][0])
-        if file_type == "GeoTIFF":
-            file_ts = {'filenames': list(self.inventory['filepath'])}
-            gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-            data = self.decode(gt_timestack.read_ts(i_min, j_min, col_size=col_size, row_size=row_size))
-        elif file_type == "NetCDF":
-            data = np.zeros((len(self), row_size, col_size))
-            for i, filepath in enumerate(self.inventory['filepath']):
-                nc_file = NcFile(filepath, mode='r')
-                data_i = nc_file.read()
-                data[i, :, :] = (data_i[band][0, j_min:(j_max+1), i_min:(i_max+1)].data) # assumes data has only one timestamp
-
-            data = self.decode(data)
-
         if apply_mask:
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
             data_mask = np.ones((row_size, col_size))
@@ -602,23 +583,90 @@ class EODataCube(object):
                     if point.within(geom_roi):
                         data_mask[j, i] = 0
 
-            data_mask = data_mask.astype(bool)
-            data_mask = np.broadcast_to(data_mask, data.shape)
-            data = data.astype(float)
-            data[data_mask] = np.nan
+        file_type = get_file_type(self.inventory['filepath'][0])
+        if file_type == "GeoTIFF":
+            file_ts = {'filenames': list(self.inventory['filepath'])}
+            gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
+            data = self.decode(gt_timestack.read_ts(i_min, j_min, col_size=col_size, row_size=row_size))
+            if apply_mask:
+                data = np.ma.array(data, mask=data_mask)
+        elif file_type == "NetCDF":
+            xr_data = xr.Dataset()
+            for i, filepath in enumerate(self.inventory['filepath']):
+                nc_file = NcFile(filepath, mode='r')
+                xr_data = xr_data.merge(nc_file.read()[band][0, j_min:(j_max+1), i_min:(i_max+1)]) # assumes data has only one timestamp
+
+            data = self.decode(xr_data)
+            if apply_mask:
+                data.data = np.ma.array(data.data, mask=data_mask)
+        else:
+            raise FileTypeUnknown(file_type)
 
         return data
 
-    def load_by_coord(self, x, y, sref=None, band=1, dimension_name="tile"):
+    def load_by_pixels(self, rows, cols, row_size=None, col_size=None, band=1, dimension_name="tile", dtype="xarray"):
+        n = len(rows)
+        if not isinstance(rows, list):
+            rows = [rows]
+        if not isinstance(cols, list):
+            cols = [cols]
+
+        data = []
+        xs = []
+        ys = []
+        for i in range(n):
+            row = rows[i]
+            col = cols[i]
+
+            if self.grid:
+                tilenames = list(self.inventory[dimension_name])
+                if len(list(set(tilenames))) > 1:
+                    raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
+                tilename = tilenames[0]
+                inv_traffo_fun = lambda i, j: self.grid.tilesys.create_tile(name=tilename).ij2xy(i, j)
+            else:
+                this_sref, this_gt = self.__get_georef()
+                inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt)
+
+            file_type = get_file_type(self.inventory['filepath'][0])
+            if file_type == "GeoTIFF":
+                file_ts = {'filenames': list(self.inventory['filepath'])}
+                gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
+                data.append(self.decode(gt_timestack.read_ts(col, row, col_size=col_size, row_size=row_size)))
+                if row_size is not None and col_size is not None:
+                    rows_i, cols_i = np.meshgrid(np.linspace(row, row + row_size), np.linspace(col, col + col_size))
+                    xs_i, ys_i = inv_traffo_fun(rows_i.flatten(), cols_i.flatten())
+                    xs.extend(xs_i)
+                    ys.extend(ys_i)
+                else:
+                    x_i, y_i = inv_traffo_fun(row, col)
+                    xs.append(x_i)
+                    ys.append(y_i)
+
+            elif file_type == "NetCDF":
+                xr_data = xr.Dataset()
+                for filepath in self.inventory['filepath']:
+                    nc_file = NcFile(filepath, mode='r')
+                    if row_size is not None and col_size is not None:
+                        xr_data = xr_data.merge(self.decode(nc_file.read()[band][0, row:(row + row_size), col:(col + col_size)].data))  # assumes data has only one timestamp
+                    else:
+                        xr_data = xr_data.merge(self.decode(nc_file.read()[band][0, row, col].data))
+                data.append(xr_data)
+            else:
+                raise FileTypeUnknown(file_type)
+
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
+
+    def load_by_coords(self, xs, ys, sref=None, band=1, dimension_name="tile", dtype="xarray"):
         """
         Loads data as a 1-D array according to a given coordinate.
 
         Parameters
         ----------
-        x: float
-            World system coordinate in X direction.
-        y: float
-            World system coordinate in Y direction.
+        xs: list of floats
+            World system coordinates in X direction.
+        ys: list of floats
+            World system coordinates in Y direction.
         sref: osr.SpatialReference, optional
             Spatial reference referring to the world system coordinates `x` and `y`.
         dimension_name: str, optional
@@ -627,36 +675,77 @@ class EODataCube(object):
         Returns
         -------
         numpy, dask or xarray array
-            Data as an 1-D array-like object.
+            List of data as an 1-D array-like object.
         """
 
-        if self.grid:
-            if sref is not None:
-                tar_spref = self.grid.core.projection.osr_spref
-                x, y = geometry.uv2xy(x, y, sref, tar_spref)
-            tilenames = list(self.inventory[dimension_name])
-            if len(list(set(tilenames))) > 1:
-                raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
-            tilename = tilenames[0]
-            i, j = self.grid.tilesys.create_tile(name=tilename).xy2ij(x, y)
+        if not isinstance(xs, list):
+            xs = [xs]
+        if not isinstance(ys, list):
+            ys = [ys]
+
+        n = len(xs)
+        data = []
+        for i in range(n):
+            x = xs[i]
+            y = ys[i]
+            if self.grid:
+                if sref is not None:
+                    tar_spref = self.grid.core.projection.osr_spref
+                    x, y = geometry.uv2xy(x, y, sref, tar_spref)
+                tilenames = list(self.inventory[dimension_name])
+                if len(list(set(tilenames))) > 1:
+                    raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
+                tilename = tilenames[0]
+                i, j = self.grid.tilesys.create_tile(name=tilename).xy2ij(x, y)
+            else:
+                this_sref, this_gt = self.__get_georef()
+                x, y = geometry.uv2xy(x, y, sref, this_sref)
+                i, j = xy2ij(x, y, this_gt)
+
+            file_type = get_file_type(self.inventory['filepath'][0])
+            if file_type == "GeoTIFF":
+                file_ts = {'filenames': list(self.inventory['filepath'])}
+                gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
+                data.append(self.decode(gt_timestack.read_ts(j, i)))
+            elif file_type == "NetCDF":
+                xr_data = xr.Dataset()
+                for filepath in self.inventory['filepath']:
+                    nc_file = NcFile(filepath, mode='r')
+                    xr_data = xr_data.merge(self.decode(nc_file.read()[band][0, i, j].data))  # assumes data has only one timestamp
+                data.append(xr_data)
+            else:
+                raise FileTypeUnknown(file_type)
+
+            return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
+
+    def __convert_dtype(self, data, dtype, xs=None, ys=None, temporal_dim_name='time', band=None):
+        err_msg = "Data conversion not possible for requested data type '{}' and actual data type '{}'."
+        err_msg = err_msg.format(dtype, type(data))
+        timestamps = self[temporal_dim_name]
+
+        if dtype == "xarray":
+            if isinstance(data, list) and isinstance(data[0], np.ndarray):
+                converted_data = xr.Dataset(data_vars={band: np.concatenate(data, axis=1)}, coords={'t': timestamps,
+                                                                                                    'x': xs, 'ys': ys})
+            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
+                converted_data = xr.merge(data)
+            elif isinstance(data, np.ndarray):
+                converted_data = xr.Dataset(data_vars={band: data}, coords={'t': timestamps, 'x': xs, 'ys': ys})
+            else:
+                raise Exception(err_msg)
+        elif dtype == "numpy":
+            if isinstance(data, list) and isinstance(data[0], np.ndarray):
+                converted_data = data
+            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
+                converted_data = [entry.data for entry in data]
+            elif isinstance(data, np.ndarray):
+                converted_data = data
+            else:
+                raise Exception(err_msg)
         else:
-            this_sref, this_gt = self.__get_georef()
-            x, y = geometry.uv2xy(x, y, sref, this_sref)
-            i, j = xy2ij(x, y, this_gt)
+            raise Exception(err_msg)
 
-        file_type = get_file_type(self.inventory['filepath'][0])
-        if file_type == "GeoTIFF":
-            file_ts = {'filenames': list(self.inventory['filepath'])}
-            gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-            return self.decode(gt_timestack.read_ts(i, j)).flatten()
-        elif file_type == "NetCDF":
-            data = []
-            for filepath in self.inventory['filepath']:
-                nc_file = NcFile(filepath, mode='r')
-                data_i = nc_file.read()
-                data.append(data_i[band][0, i, j].data)  # assumes data has only one timestamp
-
-            return self.decode(np.array(data).flatten())
+        return converted_data
 
     def encode(self, data):
         """

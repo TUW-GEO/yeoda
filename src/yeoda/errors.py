@@ -18,6 +18,14 @@ class DataTypeUnknown(Exception):
         return self.message
 
 
+class FileTypeUnknown(Exception):
+    def __init__(self, file_type):
+        self.message = "The file type '{}' is not known.".format(file_type)
+
+    def __str__(self):
+        return self.message
+
+
 class GeometryUnkown(Exception):
     def __init__(self, geometry):
         self.message = "The given geometry type '{}' cannot be used.".format(type(geometry))

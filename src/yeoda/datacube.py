@@ -696,27 +696,27 @@ class EODataCube(object):
                 if len(list(set(tilenames))) > 1:
                     raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
                 tilename = tilenames[0]
-                i, j = self.grid.tilesys.create_tile(name=tilename).xy2ij(x, y)
+                row, col = self.grid.tilesys.create_tile(name=tilename).xy2ij(x, y)
             else:
                 this_sref, this_gt = self.__get_georef()
                 x, y = geometry.uv2xy(x, y, sref, this_sref)
-                i, j = xy2ij(x, y, this_gt)
+                row, col = xy2ij(x, y, this_gt)
 
             file_type = get_file_type(self.inventory['filepath'][0])
             if file_type == "GeoTIFF":
                 file_ts = {'filenames': list(self.inventory['filepath'])}
                 gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-                data.append(self.decode(gt_timestack.read_ts(j, i)))
+                data.append(self.decode(gt_timestack.read_ts(col, row)))
             elif file_type == "NetCDF":
                 xr_data = xr.Dataset()
                 for filepath in self.inventory['filepath']:
                     nc_file = NcFile(filepath, mode='r')
-                    xr_data = xr_data.merge(self.decode(nc_file.read()[band][0, i, j].data))  # assumes data has only one timestamp
+                    xr_data = xr_data.merge(self.decode(nc_file.read()[band][0, row, col].data))  # assumes data has only one timestamp
                 data.append(xr_data)
             else:
                 raise FileTypeUnknown(file_type)
 
-            return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
 
     def __convert_dtype(self, data, dtype, xs=None, ys=None, temporal_dim_name='time', band=None):
         err_msg = "Data conversion not possible for requested data type '{}' and actual data type '{}'."
@@ -725,12 +725,17 @@ class EODataCube(object):
 
         if dtype == "xarray":
             if isinstance(data, list) and isinstance(data[0], np.ndarray):
-                converted_data = xr.Dataset(data_vars={band: np.concatenate(data, axis=1)}, coords={'t': timestamps,
-                                                                                                    'x': xs, 'ys': ys})
+                ds = []
+                for i, entry in enumerate(data):
+                    xr_ar = xr.DataArray(entry, coords={'t': timestamps, 'x': [xs[i]], 'y': [ys[i]]},
+                                         dims=['t', 'x', 'y'])
+                    ds.append(xr.Dataset(data_vars={band: xr_ar}))
+                converted_data = xr.merge(ds)
             elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
                 converted_data = xr.merge(data)
             elif isinstance(data, np.ndarray):
-                converted_data = xr.Dataset(data_vars={band: data}, coords={'t': timestamps, 'x': xs, 'ys': ys})
+                xr_ar = xr.DataArray(data, coords={'t': timestamps, 'x': xs, 'y': ys}, dims=['t', 'x', 'y'])
+                converted_data = xr.Dataset(data_vars={band: xr_ar})
             else:
                 raise Exception(err_msg)
         elif dtype == "numpy":
@@ -740,6 +745,21 @@ class EODataCube(object):
                 converted_data = [entry.data for entry in data]
             elif isinstance(data, np.ndarray):
                 converted_data = data
+            else:
+                raise Exception(err_msg)
+        elif dtype == "dataframe":
+            if isinstance(data, list) and isinstance(data[0], np.ndarray):
+                dfs = []
+                for i, entry in enumerate(data):
+                    data_i = {'t': timestamps, 'x': [xs[i]] * len(timestamps), 'y': [ys[i]] * len(timestamps),
+                              band: entry}
+                    dfs.append(pd.DataFrame(data_i))
+                converted_data = pd.merge(dfs)
+            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
+                converted_data = pd.merge([entry.to_dataframe() for entry in data])
+            elif isinstance(data, np.ndarray):
+                xr_ar = xr.DataArray(data, coords={'t': timestamps, 'x': xs, 'y': ys}, dims=['t', 'x', 'y'])
+                converted_data = xr.Dataset(data_vars={band: xr_ar}).to_dataframe()
             else:
                 raise Exception(err_msg)
         else:
@@ -780,7 +800,11 @@ class EODataCube(object):
         """
         return data
 
-    def unite(self, dc_other, drop_unalike_dims=True, in_place=False):
+    def intersect(self, dc_other, on_dimension=None, in_place=False):
+        dc_intersected = intersect_datacubes([self, dc_other], on_dimension=on_dimension)
+        return self.__assign_inventory(dc_intersected.inventory, in_place=in_place)
+
+    def unite(self, dc_other, in_place=False):
         """
         Unites this data cube with respect to another data cube.
 
@@ -800,8 +824,8 @@ class EODataCube(object):
             Merged data cube.
         """
 
-        dc_merged = unite_datacubes([self, dc_other], drop_unalike_dims=drop_unalike_dims)
-        return self.__assign_inventory(dc_merged.inventory, in_place=in_place)
+        dc_united = unite_datacubes([self, dc_other])
+        return self.__assign_inventory(dc_united.inventory, in_place=in_place)
 
     def match_dimension(self, dc_other, name, in_place=False):
         """
@@ -823,8 +847,15 @@ class EODataCube(object):
             Data cube with common values along the given dimension with respect to another data cube.
         """
 
-        dc_matched = match_dimension([self, dc_other], name, in_place=in_place)[0]
-        return self.__assign_inventory(dc_matched.inventory, in_place=in_place)
+        uni_values = list(set(self.inventory[name]))
+        all_values = np.array(dc_other.inventory[name])
+        idxs = np.zeros(len(all_values))
+        for i in range(len(uni_values)):
+            val_idxs = np.where(uni_values[i] == all_values)
+            idxs[val_idxs] = i
+
+        inventory = self.inventory.iloc[idxs].reset_index(drop=True)
+        return self.__assign_inventory(inventory, in_place=in_place)
 
     def clone(self):
         """
@@ -1189,53 +1220,18 @@ class EODataCube(object):
         return len(self.inventory)
 
 
-def match_dimension(dcs, name, in_place=False):
+def unite_datacubes(dcs):
     """
-    Matches the given data cubes along the specified dimension `name`.
-
-    Parameters
-    ----------
-    dcs: list of EODataCube's
-       List of data cubes.
-    name: str
-        Name of the dimension, which is used for aligning/filtering the values for all data cubes.
-    in_place: boolean, optional
-            If true, the current class instance will be altered.
-            If false, a new class instance will be returned (default value is False).
-
-    Returns
-    -------
-    list of EODataCube objects
-        List of data cubes having the same length as the input list.
-        Each value matches all data cubes along the given dimension.
-    """
-
-    # find common values along the specified dimension of all data cubes
-    value_set = set(dcs[0].inventory[name])
-    for dc in dcs[1:]:
-        value_set &= set(dc.inventory[name])
-    matching_values = list(value_set)
-
-    matched_dcs = []
-    for dc in dcs:
-        expressions = ['==']*len(matching_values)
-        matched_dcs.append(dc.filter_by_dimension(matching_values, expressions=expressions, name=name,
-                                                  in_place=in_place))
-
-    return matched_dcs
-
-
-def unite_datacubes(dcs, drop_unalike_dims=True):
-    """
-    Merges data cubes into one data cube.
-    This is equal to an SQL UNION operation except unalike dimensions are removed if `drop_unalike_dims` is true.
+    Unites data cubes into one data cube. This is equal to an SQL UNION operation.
+    In other words:
+        - all columns are put into one DataFrame
+        - duplicates are removed
+        - gaps are filled with NaN
 
     Parameters
     ----------
     dcs: list of EODataCube objects
        List of data cubes, which should be united.
-    drop_unalike_dims: bool, optional
-        If true, unalike dimensions of all data cubes are removed (default True).
 
     Returns
     -------
@@ -1243,20 +1239,45 @@ def unite_datacubes(dcs, drop_unalike_dims=True):
         Data cube containing all information of the given data cubes.
     """
 
-    # remove uncommon columns
-    if drop_unalike_dims:
-        column_sets = [set(dc.inventory.columns) for dc in dcs]
-        common_keys = column_sets[0]
-        for column_set in column_sets[1:]:
-            common_keys &= column_set
-        inventories = [dc.inventory[common_keys] for dc in dcs]
-    else:
-        inventories = [dc.inventory for dc in dcs]
+    inventories = [dc.inventory for dc in dcs]
 
     # this is a SQL alike UNION operation
     merged_inventory = pd.concat(inventories, ignore_index=True).drop_duplicates().reset_index(drop=True)
 
     dc_merged = EODataCube.from_inventory(merged_inventory, grid=dcs[0].grid, dir_tree=dcs[0].dir_tree)
+
+    return dc_merged
+
+def intersect_datacubes(dcs, on_dimension=None):
+    """
+    Intersects data cubes. This is equal to an SQL INNER JOIN operation.
+    In other words:
+        - all uncommon columns and rows (if `on_dimension` is given) are removed
+        - duplicates are removed
+
+    Parameters
+    ----------
+    dcs: list of EODataCube objects
+       List of data cubes, which should be intersected.
+
+    Returns
+    -------
+    EODataCube
+        Data cube containing all common information of the given data cubes.
+    """
+
+    inventories = [dc.inventory for dc in dcs]
+
+    intersected_inventory = pd.concat(inventories, ignore_index=True, join='inner')
+    if on_dimension is not None:
+        all_vals = []
+        for inventory in inventories:
+            all_vals.extend(inventory[on_dimension])
+        common_vals = list(set(all_vals))
+        intersected_inventory = intersected_inventory[intersected_inventory[on_dimension].isin(common_vals)]
+
+    intersected_inventory = intersected_inventory.drop_duplicates().reset_index(drop=True)
+    dc_merged = EODataCube.from_inventory(intersected_inventory, grid=dcs[0].grid, dir_tree=dcs[0].dir_tree)
 
     return dc_merged
 

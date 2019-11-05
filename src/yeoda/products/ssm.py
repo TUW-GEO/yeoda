@@ -1,14 +1,8 @@
+# general packages
 import numpy as np
 
-# import yeoda
-from products.base import ProductDataCube
-
-# import file and folder naming convention
-from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
-from geopathfinder.naming_conventions.sgrt_naming import sgrt_tree
-
-# import grid
-from Equi7Grid.equi7grid.equi7grid import Equi7Grid
+# import TUWGEO product data cube
+from yeoda.products.base import ProductDataCube
 
 
 class SSMDataCube(ProductDataCube):
@@ -16,28 +10,31 @@ class SSMDataCube(ProductDataCube):
     Data cube defining a TUWGEO SSM/SSM-NOISE product.
     """
 
-    def __init__(self, root_dirpath, spres=500, continent='EU', dimensions=None, inventory=None):
+    def __init__(self, root_dirpath, sres=500, continent='EU', dimensions=None, **kwargs):
         """
         Constructor of class `SSMDataCube`.
 
         Parameters
         ----------
-        root_dirpath: str, optional
+        root_dirpath : str, optional
             Root directory path to the SGRT directory tree.
-        spres: int, optional
+        sres : int, optional
             Spatial sampling in grid units, e.g. 10, 500 (default is 10).
-        continent: str, optional
+        continent : str, optional
             Continent/Subgrid of the Equi7Grid system (default is 'EU').
-        dimensions: list, optional
+        dimensions : list, optional
             List of filename parts to use as dimensions. The strings have to match with the keys of the `SgrtFilename`
             fields definition.
-        inventory: GeoDataFrame, optional
+        inventory : GeoDataFrame, optional
             Contains information about the dimensions (columns) and each filepath (rows).
-        file_pattern: str
+        file_pattern : str
             Pattern to match/only select certain file names.
+        **kwargs
+            Arbitrary keyword arguments (e.g. containing 'inventory' or 'grid').
         """
-        super().__init__(root_dirpath, ["SSM", "SSM-NOISE"], spres=spres, continent=continent, dimensions=dimensions,
-                         inventory=inventory)
+
+        super().__init__(root_dirpath, ["SSM", "SSM-NOISE"], spres=sres, continent=continent, dimensions=dimensions,
+                         **kwargs)
 
     def encode(self, data):
         """
@@ -45,12 +42,12 @@ class SSMDataCube(ProductDataCube):
 
         Parameters
         ----------
-        data: NumPy array
+        data : np.ndarray
             Input data.
 
         Returns
         -------
-        data: NumPy array
+        np.ndarray
             Encoded data.
         """
 
@@ -64,12 +61,12 @@ class SSMDataCube(ProductDataCube):
 
         Parameters
         ----------
-        data: NumPy array
+        data : np.ndarray
             Encoded input data.
 
         Returns
         -------
-        data: NumPy array
+        np.ndarray
             Decoded data based on native units.
         """
 

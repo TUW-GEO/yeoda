@@ -1,51 +1,49 @@
+# general packages
 import os
-import ogr
-import re
-from array import array
-import math
-#import numba
-import copy
 
+# geo packages
+import ogr
 import pytileproj.geometry as geometry
 import shapely.geometry
 
+# load classes from yeoda's error module
 from yeoda.errors import GeometryUnkown
 
 
 def get_file_type(filepath):
     """
-    Determines the file type of types understood by yeoda, which are "GeoTiff" and "NetCDF".
+    Determines the file type of types understood by yeoda, which are 'GeoTIFF' and 'NetCDF'.
 
     Parameters
     ----------
-    filepath: str
-        Filepath or filename.
+    filepath : str
+        File path or filename.
 
     Returns
     -------
     str
-        File type if it is understood by yeoda or None.
+        File type if it is understood by yeoda or `None`.
     """
 
     ext = os.path.splitext(filepath)[1]
     if ext in ['.tif', '.tiff']:
-        return 'GeoTIFF'
+        return "GeoTIFF"
     elif ext in ['.nc']:
         return "NetCDF"
     else:
         return None
 
 
-def any_geom2ogr_geom(geom, osr_spref):
+def any_geom2ogr_geom(geom, osr_sref):
     """
     Transforms an extent represented in different ways or a Shapely geometry object into an OGR geometry object.
 
     Parameters
     ----------
-    geom: ogr.Geometry or shapely.geometry or list or tuple, optional
+    geom : ogr.Geometry or shapely.geometry or list or tuple, optional
         A vector geometry. If it is of type list/tuple representing the extent (i.e. [x_min, y_min, x_max, y_max]),
         `osr_spref` has to be given to transform the extent into a georeferenced polygon.
-    osr_spref: osr.SpatialReference, optional
+    osr_sref : osr.SpatialReference, optional
         Spatial reference of the given geometry `geom`.
 
     Returns
@@ -55,10 +53,10 @@ def any_geom2ogr_geom(geom, osr_spref):
     """
 
     if isinstance(geom, (tuple, list)) and (not isinstance(geom[0], (tuple, list))) and \
-            (len(geom) == 4) and osr_spref:
-        geom_ogr = geometry.bbox2polygon(geom, osr_spref)
+            (len(geom) == 4) and osr_sref:
+        geom_ogr = geometry.bbox2polygon(geom, osr_sref)
     elif isinstance(geom, (tuple, list)) and (isinstance(geom[0], (tuple, list))) and \
-            (len(geom) == 2) and osr_spref:
+            (len(geom) == 2) and osr_sref:
         edge = ogr.Geometry(ogr.wkbLinearRing)
         geom = [geom[0], (geom[0][0], geom[1][1]), geom[1], (geom[1][0], geom[0][1])]
         for point in geom:
@@ -67,8 +65,8 @@ def any_geom2ogr_geom(geom, osr_spref):
         edge.CloseRings()
         geom_ogr = ogr.Geometry(ogr.wkbPolygon)
         geom_ogr.AddGeometry(edge)
-        geom_ogr.AssignSpatialReference(osr_spref)
-    elif isinstance(geom, (tuple, list)) and isinstance(geom[0], (tuple, list)) and osr_spref:
+        geom_ogr.AssignSpatialReference(osr_sref)
+    elif isinstance(geom, (tuple, list)) and isinstance(geom[0], (tuple, list)) and osr_sref:
         edge = ogr.Geometry(ogr.wkbLinearRing)
         for point in geom:
             if len(point) == 2:
@@ -76,10 +74,10 @@ def any_geom2ogr_geom(geom, osr_spref):
         edge.CloseRings()
         geom_ogr = ogr.Geometry(ogr.wkbPolygon)
         geom_ogr.AddGeometry(edge)
-        geom_ogr.AssignSpatialReference(osr_spref)
+        geom_ogr.AssignSpatialReference(osr_sref)
     elif isinstance(geom, shapely.geometry.Polygon):
         geom_ogr = ogr.CreateGeometryFromWkt(geom.wkt)
-        geom_ogr.AssignSpatialReference(osr_spref)
+        geom_ogr.AssignSpatialReference(osr_sref)
     elif isinstance(geom, ogr.Geometry):
         geom_ogr = geom
     else:
@@ -94,18 +92,18 @@ def xy2ij(x, y, gt):
 
     Parameters
     ----------
-    x: float
+    x : float
         World system coordinate in X direction.
-    y: float
+    y : float
         World system coordinate in Y direction.
-    gt: tuple
+    gt : tuple
         Geo-transformation parameters/dictionary.
 
     Returns
     -------
-    i: int
+    i : int
         Row number in pixels.
-    j: int
+    j : int
         Column number in pixels.
     """
 
@@ -122,18 +120,18 @@ def ij2xy(i, j, gt):
 
     Parameters
     ----------
-    i: int
+    i : int
         Row number in pixels.
-    j: int
+    j : int
         Column number in pixels.
-    gt: dict
+    gt : dict
         Geo-transformation parameters/dictionary.
 
     Returns
     -------
-    x: float
+    x : float
         World system coordinate in X direction.
-    y: float
+    y : float
         World system coordinate in Y direction.
     """
 

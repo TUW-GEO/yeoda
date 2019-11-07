@@ -142,3 +142,17 @@ class TileNotAvailable(Exception):
         """ String representation of this class. """
 
         return self.message
+
+
+class LoadingDataError(IOError):
+    """ Class to handle exceptions thrown when it is not possible to read data."""
+
+    def __init__(self):
+        """Constructor of `LoadingDataError`."""
+
+        self.message = "Failed loading the data."
+
+    def __str__(self):
+        """ String representation of this class. """
+
+        return self.message

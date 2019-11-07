@@ -1,24 +1,24 @@
-# general imports
+# general packages
 import os
 import osr
-
-from datetime import datetime
+import itertools
 import numpy as np
 import pandas as pd
-import itertools
-
-from geopathfinder.naming_conventions.sgrt_naming import sgrt_tree
+import xarray as xr
+from datetime import datetime
 
 from equi7grid.equi7grid import Equi7Grid
-from pyraster.geotiff import GeoTiffFile
+from veranda.geotiff import GeoTiffFile
+from veranda.netcdf import NcFile
 
+from yeoda.utils import ij2xy
 
 def dirpath_test():
     pth, _ = os.path.split(os.path.abspath(__file__))
     return pth
 
 
-def setup_test_data(initialise=True):
+def setup_gt_test_data():
     root_dirpath = os.path.join(dirpath_test(), 'data', 'Sentinel-1_CSAR')
 
     # create target folders
@@ -26,51 +26,144 @@ def setup_test_data(initialise=True):
 
     timestamps = [datetime(2016, 1, 1), datetime(2016, 2, 1), datetime(2017, 1, 1), datetime(2017, 2, 1)]
 
-    if initialise:
-        var_names = ["SIG0", "GMR-"]
-        pols = ["VV", "VH"]
-        directions = ["A", "D"]
-        tilenames = ["E048N012T6", "E042N012T6"]
-        filename_fmt = "D{}_000000--_{}-----_S1AIWGRDH1{}{}_146_T0101_EU500M_{}.tif"
-        combs = itertools.product(var_names, pols, directions, timestamps, tilenames)
+    var_names = ["SIG0", "GMR-"]
+    pols = ["VV", "VH"]
+    directions = ["A", "D"]
+    tilenames = ["E048N012T6", "E042N012T6"]
+    filename_fmt = "D{}_000000--_{}-----_S1AIWGRDH1{}{}_146_T0101_EU500M_{}.tif"
+    combs = itertools.product(var_names, pols, directions, timestamps, tilenames)
 
-        data = np.zeros((1600, 1600))
-        equi7 = Equi7Grid(500)
+    rows, cols = np.meshgrid(np.arange(0, 1600), np.arange(0, 1600))
+    data = rows + cols
+    equi7 = Equi7Grid(500)
 
-        filepaths = []
-        for comb in combs:
-            var_name = comb[0]
-            pol = comb[1]
-            direction = comb[2]
-            timestamp = comb[3]
-            tilename = comb[4]
-            filename = filename_fmt.format(timestamp.strftime("%Y%m%d"), var_name, pol, direction, tilename)
-            if var_name == "SIG0":
-                var_dirpath = os.path.join(dirpath, tilename, "sig0")
-            elif var_name == "GMR-":
-                var_dirpath = os.path.join(dirpath, tilename, "gmr")
-            else:
-                raise Exception("Variable name {} unknown.".format(var_name))
+    filepaths = []
+    for comb in combs:
+        var_name = comb[0]
+        pol = comb[1]
+        direction = comb[2]
+        timestamp = comb[3]
+        tilename = comb[4]
+        filename = filename_fmt.format(timestamp.strftime("%Y%m%d"), var_name, pol, direction, tilename)
+        if var_name == "SIG0":
+            var_dirpath = os.path.join(dirpath, tilename, "sig0")
+        elif var_name == "GMR-":
+            var_dirpath = os.path.join(dirpath, tilename, "gmr")
+        else:
+            raise Exception("Variable name {} unknown.".format(var_name))
 
-            if not os.path.exists(var_dirpath):
-                os.makedirs(var_dirpath)
-            filepath = os.path.join(var_dirpath, filename)
+        if not os.path.exists(var_dirpath):
+            os.makedirs(var_dirpath)
+        filepath = os.path.join(var_dirpath, filename)
+        filepaths.append(filepath)
 
-            if not os.path.exists(filepath):
-                tile_oi = equi7.EU.tilesys.create_tile(name=tilename)
-                tags = {'metadata': {'direction': direction}}
-                gt_file = GeoTiffFile(filepath, mode='w', count=1, geotransform=tile_oi.geotransform(),
-                                      spatialref=tile_oi.get_geotags()['spatialreference'], tags=tags)
+        if not os.path.exists(filepath):
+            tile_oi = equi7.EU.tilesys.create_tile(name=tilename)
+            tags = {'metadata': {'direction': direction}}
+            gt_file = GeoTiffFile(filepath, mode='w', count=1, geotransform=tile_oi.geotransform(),
+                                  spatialref=tile_oi.get_geotags()['spatialreference'], tags=tags)
 
-                data[:] = timestamps.index(timestamp)
-                gt_file.write(data, band=1, nodata=[-9999])
-                gt_file.close()
-                filepaths.append(filepath)
+            data_i = data + timestamps.index(timestamp)
+            gt_file.write(data_i, band=1, nodata=[-9999])
+            gt_file.close()
 
-    dir_tree = sgrt_tree(root_dirpath, register_file_pattern=".tif$")
     timestamps = [pd.Timestamp(timestamp.strftime("%Y%m%d")) for timestamp in timestamps]
 
-    return dir_tree, timestamps
+    return filepaths, timestamps
+
+
+def setup_nc_multi_test_data():
+    root_dirpath = os.path.join(dirpath_test(), 'data', 'Sentinel-1_CSAR')
+
+    # create target folders
+    dirpath = os.path.join(root_dirpath, 'IWGRDH', 'parameters', 'datasets', 'resampled', 'T0101', 'EQUI7_EU500M',
+                           'E042N012T6', 'sig0')
+
+    timestamps = [datetime(2016, 1, 1), datetime(2016, 2, 1), datetime(2017, 1, 1), datetime(2017, 2, 1)]
+
+    pols = ["VV", "VH"]
+    directions = ["A", "D"]
+    filename_fmt = "D{}_000000--_SIG0-----_S1AIWGRDH1{}{}_146_T0101_EU500M_E042N012T6.nc"
+    combs = itertools.product(pols, directions, timestamps)
+
+    rows, cols = np.meshgrid(np.arange(0, 1600), np.arange(0, 1600))
+    data = rows + cols
+    equi7 = Equi7Grid(500)
+    tile_oi = equi7.EU.tilesys.create_tile(name="E042N012T6")
+
+    if not os.path.exists(dirpath):
+        os.makedirs(dirpath)
+
+    filepaths = []
+    for comb in combs:
+        pol = comb[0]
+        direction = comb[1]
+        timestamp = comb[2]
+        filename = filename_fmt.format(timestamp.strftime("%Y%m%d"), pol, direction)
+        filepath = os.path.join(dirpath, filename)
+        filepaths.append(filepath)
+
+        if not os.path.exists(filepath):
+            tags = {'direction': direction}
+            nc_file = NcFile(filepath, mode='w', geotransform=tile_oi.geotransform(),
+                         spatialref=tile_oi.get_geotags()['spatialreference'])
+            data_i = data + timestamps.index(timestamp)
+            xr_ar = xr.DataArray(data=data_i[None, :, :], coords={'time': [timestamp]},
+                                 dims=['time', 'x', 'y'])
+            xr_ds = xr.Dataset(data_vars={'1': xr_ar}, attrs=tags)
+            nc_file.write(xr_ds)
+            nc_file.close()
+
+    timestamps = [pd.Timestamp(timestamp.strftime("%Y%m%d")) for timestamp in timestamps]
+
+    return filepaths, timestamps
+
+
+def setup_nc_single_test_data():
+    root_dirpath = os.path.join(dirpath_test(), 'data', 'Sentinel-1_CSAR')
+
+    # create target folders
+    dirpath = os.path.join(root_dirpath, 'IWGRDH', 'products', 'datasets', 'resampled', 'T0101', 'EQUI7_EU500M',
+                           'E048N012T6', 'data')
+
+    timestamps = [datetime(2016, 1, 1), datetime(2016, 2, 1), datetime(2017, 1, 1), datetime(2017, 2, 1)]
+
+    var_names = ["SIG0", "GMR-"]
+    directions = ["A", "D"]
+    combs = itertools.product(var_names, directions, timestamps)
+
+    rows, cols = np.meshgrid(np.arange(0, 1600), np.arange(0, 1600))
+    data = rows + cols
+    equi7 = Equi7Grid(500)
+    tile_oi = equi7.EU.tilesys.create_tile(name="E048N012T6")
+
+    xr_dss = []
+    filepath = os.path.join(dirpath, "D20160101_20170201_PREPRO---_S1AIWGRDH1VV-_146_T0101_EU500M_E048N012T6.nc")
+    if not os.path.exists(dirpath):
+        os.makedirs(dirpath)
+
+    if not os.path.exists(filepath):
+        for comb in combs:
+            var_name = comb[0]
+            direction = comb[1]
+            timestamp = comb[2]
+
+            tags = {'direction': direction}
+
+            data_i = data + timestamps.index(timestamp)
+            xr_ar = xr.DataArray(data=data_i[None, :, :], coords={'time': [timestamp]},
+                                 dims=['time', 'x', 'y'], attrs=tags)
+            xr_dss.append(xr.Dataset(data_vars={var_name.strip('-'): xr_ar}))
+
+        nc_file = NcFile(filepath, mode='w', geotransform=tile_oi.geotransform(),
+                         spatialref=tile_oi.get_geotags()['spatialreference'])
+        xr_ds = xr.merge(xr_dss)
+        nc_file.write(xr_ds)
+        nc_file.close()
+
+    timestamps = [pd.Timestamp(timestamp.strftime("%Y%m%d")) for timestamp in timestamps]
+
+    return filepath, timestamps
 
 
 def roi_test():

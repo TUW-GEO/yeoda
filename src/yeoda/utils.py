@@ -114,7 +114,7 @@ def xy2ij(x, y, gt):
     return i, j
 
 
-def ij2xy(i, j, gt):
+def ij2xy(i, j, gt, origin="ul"):
     """
     Transforms global/world system coordinates to pixel coordinates/indexes.
 
@@ -135,8 +135,24 @@ def ij2xy(i, j, gt):
         World system coordinate in Y direction.
     """
 
+    px_shift_map = {"ul": (0, 0),
+                    "ur": (0, 1),
+                    "lr": (1, 1),
+                    "ll": (1, 0),
+                    "c": (.5, .5)}
+
+    if origin in px_shift_map.keys():
+        px_shift = px_shift_map[origin]
+    else:
+        user_wrng = "Pixel origin '{}' unknown. Upper left origin 'ul' will be taken instead".format(origin)
+        raise Warning(user_wrng)
+        px_shift = (0, 0)
+
+    i += px_shift[0]
+    j += px_shift[1]
     x = gt[0] + i * gt[1] + j * gt[2]
     y = gt[3] + i * gt[4] + j * gt[5]
+
     return x, y
 
 

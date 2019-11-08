@@ -7,18 +7,31 @@ import pandas as pd
 import xarray as xr
 from datetime import datetime
 
+# import veranda and Equi7Grid
 from equi7grid.equi7grid import Equi7Grid
 from veranda.geotiff import GeoTiffFile
 from veranda.netcdf import NcFile
 
-from yeoda.utils import ij2xy
 
 def dirpath_test():
+    """ Defines root directory path of the test directory. """
+
     pth, _ = os.path.split(os.path.abspath(__file__))
     return pth
 
 
 def setup_gt_test_data():
+    """
+    Creates test data as single-time and single-band GeoTIFF files.
+
+    Returns
+    -------
+    list of str
+        List of GeoTIFF test data filepaths.
+    list of datetime
+        List of timestamps as datetime objects.
+    """
+
     root_dirpath = os.path.join(dirpath_test(), 'data', 'Sentinel-1_CSAR')
 
     # create target folders
@@ -73,6 +86,17 @@ def setup_gt_test_data():
 
 
 def setup_nc_multi_test_data():
+    """
+    Creates test data as single-time and single-variable NetCDF files.
+
+    Returns
+    -------
+    list of str
+        List of NetCDF test data filepaths.
+    list of datetime
+        List of timestamps as datetime objects.
+    """
+
     root_dirpath = os.path.join(dirpath_test(), 'data', 'Sentinel-1_CSAR')
 
     # create target folders
@@ -120,6 +144,17 @@ def setup_nc_multi_test_data():
 
 
 def setup_nc_single_test_data():
+    """
+    Creates test data as a multi-time and multi-variable NetCDF file.
+
+    Returns
+    -------
+    str
+        NetCDF test data filepath.
+    list of datetime
+        List of timestamps as datetime objects.
+    """
+
     root_dirpath = os.path.join(dirpath_test(), 'data', 'Sentinel-1_CSAR')
 
     # create target folders
@@ -167,6 +202,8 @@ def setup_nc_single_test_data():
 
 
 def roi_test():
+    """ Creates a bounding box and a spatial reference object in LonLat. """
+
     bbox = [(4.36, 43.44), (6.48, 45.80)]
     sref = osr.SpatialReference()
     sref.ImportFromEPSG(4326)

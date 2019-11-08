@@ -12,8 +12,10 @@ from tests.setup_test_data import setup_nc_multi_test_data
 from tests.setup_test_data import setup_nc_single_test_data
 from tests.setup_test_data import dirpath_test
 
-
+# import SGRT naming convention from geopathfinder
 from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
+
+# import yeoda data cube
 from yeoda.datacube import EODataCube
 
 
@@ -38,6 +40,11 @@ class LoadingTester(unittest.TestCase):
         shutil.rmtree(os.path.join(dirpath_test(), 'data'))
 
     def _create_loadable_dc(self, filepaths):
+        """
+        Creates a data cube and filters it so that only the temporal dimension is left for loading data
+        appropriately.
+        """
+
         dc = EODataCube(filepaths=filepaths, smart_filename_creator=create_sgrt_filename,
                         dimensions=['time', 'var_name', 'pol', 'tile_name', 'orbit_direction'])
 
@@ -50,15 +57,18 @@ class LoadingTester(unittest.TestCase):
 
 
 class LoadingCoordsTester(LoadingTester):
+    """ Responsible for testing the loading functionalities by specifying coordinates. """
 
     def setUp(self):
-        gt_filepaths, timestamps = setup_gt_test_data()
-        self.gt_filepaths = gt_filepaths
-        nc_filepaths, _ = setup_nc_multi_test_data()
-        self.nc_filepaths = nc_filepaths
-        nc_filepath, _ = setup_nc_single_test_data()
-        self.nc_filepath = nc_filepath
-        self.timestamps = timestamps
+        """
+        Retrieves test data filepaths and auxiliary data and creates temporary reference data as NumPy arrays,
+        xarray arrays and Pandas data frames.
+        """
+
+        self.gt_filepaths, self.timestamps = setup_gt_test_data()
+        self.nc_filepaths, _ = setup_nc_multi_test_data()
+        self.nc_filepath, _ = setup_nc_single_test_data()
+
         self.lon = 5.
         self.lat = 44.
         sref = osr.SpatialReference()
@@ -77,6 +87,8 @@ class LoadingCoordsTester(LoadingTester):
         self.ref_pd_df = self.ref_xr_ds.to_dataframe()
 
     def test_load_gt2numpy_by_coord(self):
+        """ Tests loading of a Numpy array from GeoTIFF files by geographic coordinates. """
+
         dc = self._create_loadable_dc(self.gt_filepaths)
 
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dimension_name='tile_name', dtype='numpy')
@@ -88,12 +100,13 @@ class LoadingCoordsTester(LoadingTester):
         assert (ref_data_list[0] == data[0]).all() & (ref_data_list[1] == data[1]).all()
 
     def test_load_gt2xarray_by_coord(self):
+        """ Tests loading of an xarray array from GeoTIFF files by geographic coordinates. """
+
         dc = self._create_loadable_dc(self.gt_filepaths)
 
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dimension_name='tile_name', dtype='xarray',
                                  origin='c')
-        # convert to float
-        data['1'].data = data['1'].data.astype(float)
+        data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds.equals(data)
 
         ref_data_list = [self.ref_xr_ds, self.ref_xr_ds]
@@ -102,22 +115,24 @@ class LoadingCoordsTester(LoadingTester):
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
 
     def test_load_gt2dataframe_by_coord(self):
+        """ Tests loading of a Pandas data frame from GeoTIFF files by geographic coordinates. """
+
         dc = self._create_loadable_dc(self.gt_filepaths)
 
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dimension_name='tile_name', dtype='dataframe',
                                  origin='c')
-        # convert to float for comparison
-        data['1'] = data['1'].astype(float)
+        data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df.equals(data)
 
         ref_data_list = [self.ref_pd_df, self.ref_pd_df]
         data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
                                  dimension_name='tile_name', dtype='dataframe', origin='c')
-        # convert to float for comparison
-        data['1'] = data['1'].astype(float)
+        data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
 
     def test_load_nc2numpy_by_coord(self):
+        """ Tests loading of a Numpy array from NetCDF files by geographic coordinates. """
+
         dc = self._create_loadable_dc(self.nc_filepaths)
 
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dimension_name='tile_name', dtype='numpy')
@@ -129,6 +144,8 @@ class LoadingCoordsTester(LoadingTester):
         assert (ref_data_list[0] == data[0]).all() & (ref_data_list[1] == data[1]).all()
 
     def test_load_nc2xarray_by_coord(self):
+        """ Tests loading of an xarray array from NetCDF files by geographic coordinates. """
+
         dc = self._create_loadable_dc(self.nc_filepaths)
 
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dimension_name='tile_name', dtype='xarray',
@@ -141,6 +158,8 @@ class LoadingCoordsTester(LoadingTester):
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
 
     def test_load_nc2dataframe_by_coord(self):
+        """ Tests loading of a Pandas data frame from NetCDF files by geographic coordinates. """
+
         dc = self._create_loadable_dc(self.nc_filepaths)
 
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dimension_name='tile_name', dtype='dataframe',
@@ -153,25 +172,31 @@ class LoadingCoordsTester(LoadingTester):
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
 
     def test_load_singlenc2xarray_by_coord(self):
+        """ Tests loading of an xarray array from a multidimensional NetCDF file by geographic coordinates. """
+
         dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_creator=create_sgrt_filename,
                         dimensions=['time'])
-
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, band='SIG0', dtype='xarray', origin='c')
         assert self.ref_xr_ds.equals(data.rename({'SIG0': '1'}))
 
 
 class LoadingPixelsTester(LoadingTester):
+    """ Responsible for testing the loading functionalities by specifying pixel numbers and and a window size. """
 
     def setUp(self):
-        gt_filepaths, timestamps = setup_gt_test_data()
-        self.gt_filepaths = gt_filepaths
-        nc_filepaths, _ = setup_nc_multi_test_data()
-        self.nc_filepaths = nc_filepaths
-        nc_filepath, _ = setup_nc_single_test_data()
-        self.nc_filepath = nc_filepath
-        self.timestamps = timestamps
+        """
+        Retrieves test data filepaths and auxiliary data and creates temporary reference data as NumPy arrays,
+        xarray arrays and Pandas data frames.
+        """
+
+        self.gt_filepaths, self.timestamps = setup_gt_test_data()
+        self.nc_filepaths, _ = setup_nc_multi_test_data()
+        self.nc_filepath, _ = setup_nc_single_test_data()
+
         self.row = 246
         self.col = 970
+        self.row_size = 10
+        self.col_size = 10
         x = 4323250.
         y = 1314750.
 
@@ -181,9 +206,6 @@ class LoadingPixelsTester(LoadingTester):
                              dims=['time', 'x', 'y'])
         self.ref_xr_ds = xr.Dataset(data_vars={'1': xr_ar})
         self.ref_pd_df = self.ref_xr_ds.to_dataframe()
-
-        self.row_size = 10
-        self.col_size = 10
         rows, cols = np.meshgrid(np.arange(self.row, self.row+self.row_size),
                                  np.arange(self.col, self.col+self.col_size))
         xs = np.arange(x, x + self.row_size * 500, 500.)
@@ -198,6 +220,8 @@ class LoadingPixelsTester(LoadingTester):
         self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe()
 
     def test_load_gt2numpy_by_pixels(self):
+        """ Tests loading of a Numpy array from GeoTIFF files by pixel coordinates. """
+
         dc = self._create_loadable_dc(self.gt_filepaths)
 
         data = dc.load_by_pixels(self.row, self.col, dimension_name='tile_name', dtype='numpy')
@@ -208,32 +232,37 @@ class LoadingPixelsTester(LoadingTester):
         assert (self.ref_np_ar_area == data).all()
 
     def test_load_gt2xarray_by_pixels(self):
+        """ Tests loading of an xarray array from GeoTIFF files by pixel coordinates. """
+
         dc = self._create_loadable_dc(self.gt_filepaths)
 
         data = dc.load_by_pixels(self.row, self.col, dimension_name='tile_name', dtype='xarray', origin='c')
-        # convert to float
-        data['1'].data = data['1'].data.astype(float)
+        data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds.equals(data)
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
                                  dimension_name='tile_name', dtype='xarray', origin='c')
-        data['1'].data = data['1'].data.astype(float)
+        data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds_area.equals(data)
 
     def test_load_gt2dataframe_by_pixels(self):
+        """ Tests loading of a Pandas data frame from GeoTIFF files by pixel coordinates. """
+
         dc = self._create_loadable_dc(self.gt_filepaths)
 
         data = dc.load_by_pixels(self.row, self.col, dimension_name='tile_name', dtype='dataframe', origin='c')
         # convert to float
-        data['1'] = data['1'].astype(float)
+        data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df.equals(data)
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
                                  dimension_name='tile_name', dtype='dataframe', origin='c')
-        data['1'] = data['1'].astype(float)
+        data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df_area.equals(data)
 
     def test_load_nc2numpy_by_pixels(self):
+        """ Tests loading of a Numpy array from NetCDF files by pixel coordinates. """
+
         dc = self._create_loadable_dc(self.nc_filepaths)
 
         data = dc.load_by_pixels(self.row, self.col, dimension_name='tile_name', dtype='numpy')
@@ -244,50 +273,56 @@ class LoadingPixelsTester(LoadingTester):
         assert (self.ref_np_ar_area == data).all()
 
     def test_load_nc2xarray_by_pixels(self):
+        """ Tests loading of an xarray array from NetCDF files by pixel coordinates. """
+
         dc = self._create_loadable_dc(self.nc_filepaths)
 
         data = dc.load_by_pixels(self.row, self.col, dimension_name='tile_name', dtype='xarray', origin='c')
-        # convert to float
-        data['1'].data = data['1'].data.astype(float)
+        data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds.equals(data)
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
                                  dimension_name='tile_name', dtype='xarray', origin='c')
-        data['1'].data = data['1'].data.astype(float)
+        data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds_area.equals(data)
 
     def test_load_nc2dataframe_by_pixels(self):
+        """ Tests loading of a Pandas data frame from NetCDF files by pixel coordinates. """
+
         dc = self._create_loadable_dc(self.nc_filepaths)
 
         data = dc.load_by_pixels(self.row, self.col, dimension_name='tile_name', dtype='dataframe', origin='c')
-        # convert to float
-        data['1'] = data['1'].astype(float)
+        data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df.equals(data)
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
                                  dimension_name='tile_name', dtype='dataframe', origin='c')
-        data['1'] = data['1'].astype(float)
+        data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df_area.equals(data)
 
     def test_load_singlenc2xarray_by_pixels(self):
+        """ Tests loading of an xarray array from a multidimensional NetCDF file by pixel coordinates. """
+
         dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_creator=create_sgrt_filename,
                         dimensions=['time'])
-
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, band='SIG0',
                                  dtype='xarray', origin='c')
         assert self.ref_xr_ds_area.equals(data.rename({'SIG0': '1'}))
 
 
 class LoadingGeomTester(LoadingTester):
+    """ Responsible for testing the loading functionalities by specifying a region/geometry of interest. """
 
     def setUp(self):
-        gt_filepaths, timestamps = setup_gt_test_data()
-        self.gt_filepaths = gt_filepaths
-        nc_filepaths, _ = setup_nc_multi_test_data()
-        self.nc_filepaths = nc_filepaths
-        nc_filepath, _ = setup_nc_single_test_data()
-        self.nc_filepath = nc_filepath
-        self.timestamps = timestamps
+        """
+        Retrieves test data filepaths and auxiliary data and creates temporary reference data as NumPy arrays,
+        xarray arrays and Pandas data frames.
+        """
+
+        self.gt_filepaths, self.timestamps = setup_gt_test_data()
+        self.nc_filepaths, _ = setup_nc_multi_test_data()
+        self.nc_filepath, _ = setup_nc_single_test_data()
+
         row = 246
         col = 970
         x = 4323250.
@@ -314,43 +349,54 @@ class LoadingGeomTester(LoadingTester):
         self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe()
 
     def test_load_gt2numpy_by_geom(self):
+        """ Tests loading of a Numpy array from GeoTIFF files by a bounding box. """
+
         dc = self._create_loadable_dc(self.gt_filepaths)
         data = dc.load_by_geom(self.bbox, dimension_name='tile_name', dtype='numpy')
         assert (self.ref_np_ar_area == data).all()
 
     def test_load_gt2xarray_by_geom(self):
+        """ Tests loading of an xarray array from GeoTIFF files by a bounding box. """
+
         dc = self._create_loadable_dc(self.gt_filepaths)
         data = dc.load_by_geom(self.bbox, dimension_name='tile_name', dtype='xarray', origin='c')
-        # convert to float
-        data['1'].data = data['1'].data.astype(float)
+        data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds_area.equals(data)
 
     def test_load_gt2dataframe_by_geom(self):
+        """ Tests loading of a Pandas data frame from GeoTIFF files by a bounding box. """
+
         dc = self._create_loadable_dc(self.gt_filepaths)
         data = dc.load_by_geom(self.bbox, dimension_name='tile_name', dtype='dataframe', origin='c')
-        # convert to float
-        data['1'] = data['1'].astype(float)
+        data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df_area.equals(data)
 
     def test_load_nc2numpy_by_geom(self):
+        """ Tests loading of a Numpy array from NetCDF files by a bounding box. """
+
         dc = self._create_loadable_dc(self.nc_filepaths)
         data = dc.load_by_geom(self.bbox, dimension_name='tile_name', dtype='numpy')
         assert (self.ref_np_ar_area == data).all()
 
     def test_load_nc2xarray_by_geom(self):
+        """ Tests loading of an xarray array from NetCDF files by a bounding box. """
+
         dc = self._create_loadable_dc(self.nc_filepaths)
         data = dc.load_by_geom(self.bbox, dimension_name='tile_name', dtype='xarray', origin='c')
         assert self.ref_xr_ds_area.equals(data)
 
     def test_load_nc2dataframe_by_geom(self):
+        """ Tests loading of a Pandas data frame from NetCDF files by a bounding box. """
+
         dc = self._create_loadable_dc(self.nc_filepaths)
         data = dc.load_by_geom(self.bbox, dimension_name='tile_name', dtype='dataframe', origin='c')
         assert self.ref_pd_df_area.equals(data)
 
     def test_load_singlenc2xarray_by_pixels(self):
+        """ Tests loading of an xarray array from a multidimensional NetCDF file by a bounding box. """
+
         dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_creator=create_sgrt_filename,
                         dimensions=['time'])
-
         data = dc.load_by_geom(self.bbox, band='SIG0', dtype='xarray', origin='c')
         assert self.ref_xr_ds_area.equals(data.rename({'SIG0': '1'}))
 

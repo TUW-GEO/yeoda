@@ -3,6 +3,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.6
+  - gdal=2.4.3
   - regex
   - netCDF4
   - geopandas

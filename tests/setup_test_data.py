@@ -135,7 +135,7 @@ def setup_nc_single_test_data():
     rows, cols = np.meshgrid(np.arange(0, 1600), np.arange(0, 1600))
     data = rows + cols
     equi7 = Equi7Grid(500)
-    tile_oi = equi7.EU.tilesys.create_tile(name="E048N012T6")
+    tile_oi = equi7.EU.tilesys.create_tile(name="E042N012T6")
 
     xr_dss = []
     filepath = os.path.join(dirpath, "D20160101_20170201_PREPRO---_S1AIWGRDH1VV-_146_T0101_EU500M_E048N012T6.nc")

@@ -44,6 +44,10 @@ class ProductDataCube(EODataCube):
         else:
             dir_tree = kwargs.get('dir_tree', None)
 
+        filepaths = None
+        if dir_tree is not None:
+            filepaths = dir_tree.file_register
+
         inventory = kwargs.get('inventory', None)
 
         # ensure there is a variable dimension
@@ -56,7 +60,7 @@ class ProductDataCube(EODataCube):
         if 'tile_name' not in dimensions:
             dimensions.append('tile_name')
 
-        super().__init__(inventory=inventory, filepaths=dir_tree.file_register, dimensions=dimensions,
+        super().__init__(inventory=inventory, filepaths=filepaths, dimensions=dimensions,
                          smart_filename_creator=create_sgrt_filename, grid=grid)
 
         # filter variable names

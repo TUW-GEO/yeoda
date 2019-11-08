@@ -115,7 +115,7 @@ class DimensionUnkown(KeyError):
             Column/Dimension name of the data cube inventory.
         """
 
-        self.message = "Dimension {} is unknown.".format(dimension_name)
+        self.message = "Dimension {} is unknown. Please add it to the data cube.".format(dimension_name)
 
     def __str__(self):
         """ String representation of this class. """

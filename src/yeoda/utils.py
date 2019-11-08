@@ -126,6 +126,13 @@ def ij2xy(i, j, gt, origin="ul"):
         Column number in pixels.
     gt : dict
         Geo-transformation parameters/dictionary.
+    origin: str, optional
+        Defines the world system origin of the pixel. It can be:
+            - upper left ("ul")
+            - upper right ("ur", default)
+            - lower right ("lr")
+            - lower left ("ll")
+            - center ("c")
 
     Returns
     -------

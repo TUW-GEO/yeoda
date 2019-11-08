@@ -271,11 +271,10 @@ class EODataCube(object):
         for filepath in self.filepaths:
             io_class = self.__io_class(get_file_type(filepath))
             io_instance = io_class(filepath, mode='r')
-            ds = io_instance.src  # IO class has to have a "src" class variable which is a pointer to the data set
 
             select = False
-            if ds:
-                ds_metadata = ds.metadata
+            if io_instance.src:
+                ds_metadata = io_instance.metadata
                 select = True
                 for key, value in metadata.items():
                     if key not in ds_metadata.keys():
@@ -551,7 +550,8 @@ class EODataCube(object):
 
         return self.split_by_dimension(values, expressions, name=name)
 
-    def load_by_geom(self, geom, sref=None, dimension_name="tile", band=1, apply_mask=True, dtype="xarray"):
+    def load_by_geom(self, geom, sref=None, dimension_name="tile", band='1', apply_mask=False, dtype="xarray",
+                     origin='c'):
         """
         Loads data according to a given geometry.
 
@@ -568,102 +568,122 @@ class EODataCube(object):
         dimension_name : str, optional
             Name of the spatial dimension (default: 'tile').
         apply_mask : bool, optional
-            If true, a numpy mask array with a mask excluding all pixels outside `geom` will be created
+            If true, a numpy mask array with a mask excluding (=1) all pixels outside `geom` (=0) will be created
             (default is True).
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
                 - 'numpy': loads data as a numpy.ndarray
                 - 'dataframe': loads data as a pandas.DataFrame
+        origin: str, optional
+            Defines the world system origin of the pixel. It can be:
+                - upper left ("ul")
+                - upper right ("ur", default)
+                - lower right ("lr")
+                - lower left ("ll")
+                - center ("c")
 
         Returns
         -------
-        numpy.array or xarray.DataSet
+        numpy.array or xarray.DataSet or pd.DataFrame
             Data as an array-like object.
         """
 
         if self.inventory is None:  # no data given
             return None
 
-        geom_roi = any_geom2ogr_geom(geom, osr_sref=sref)
-
         if self.grid:
+            if dimension_name not in self.dimensions:
+                raise DimensionUnkown(dimension_name)
+            this_sref = None
             if sref is not None:
-                tar_spref = self.grid.core.projection.osr_spref
-                geom_roi = geometry.transform_geometry(geom_roi, tar_spref)
-
-            extent = geometry.get_geometry_envelope(geom_roi)
+                this_sref = self.grid.core.projection.osr_spref
             tilenames = list(self.inventory[dimension_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
-            min_row, min_col = self.grid.tilesys.create_tile(name=tilename).xy2ij(extent[0], extent[3])
-            max_row, max_col = self.grid.tilesys.create_tile(name=tilename).xy2ij(extent[2], extent[1])
-            inv_traffo_fun = lambda i, j: self.grid.tilesys.create_tile(name=tilename).ij2xy(i, j)
+            this_gt = self.grid.tilesys.create_tile(name=tilename).geotransform()
         else:
             this_sref, this_gt = self.__get_georef()
-            geom_roi = geometry.transform_geometry(geom_roi, this_sref)
-            extent = geometry.get_geometry_envelope(geom_roi)
-            min_row, min_col = xy2ij(extent[0], extent[3], this_gt)
-            max_row, max_col = xy2ij(extent[2], extent[1], this_gt)
-            inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt)
 
-        row_size = max_col - min_col + 1
-        col_size = max_row - min_row + 1
+        geom_roi = any_geom2ogr_geom(geom, osr_sref=this_sref)
+        if sref is not None:
+            geom_roi = geometry.transform_geometry(geom_roi, this_sref)
+
+        extent = geometry.get_geometry_envelope(geom_roi)
+        inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
+        min_row, min_col = xy2ij(extent[0], extent[3], this_gt)
+        max_row, max_col = xy2ij(extent[2], extent[1], this_gt)
+        row_size = max_col - min_col
+        col_size = max_row - min_row
         if apply_mask:
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
             data_mask = np.ones((row_size, col_size))
-            for i in range(col_size):
-                for j in range(row_size):
-                    x_i, y_j = inv_traffo_fun(min_row + i, min_col + j)
-                    point = Point(x_i, y_j)
-                    if point.within(geom_roi):
-                        data_mask[j, i] = 0
+            for col in range(col_size):
+                for row in range(row_size):
+                    x, y = inv_traffo_fun(min_row + row, min_col + col)
+                    point = Point(x, y)
+                    if point.within(geom_roi) or point.touches(geom_roi):
+                        data_mask[row, col] = 0
 
         file_type = get_file_type(self.filepaths[0])
+        xs = None
+        ys = None
         if file_type == "GeoTIFF":
             file_ts = {'filenames': list(self.filepaths)}
             gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
             data = self.decode(gt_timestack.read_ts(min_row, min_col, col_size=col_size, row_size=row_size))
             if data is None:
                 raise LoadingDataError()
-            if apply_mask:
-                data = np.ma.array(data, mask=data_mask)
 
-            xs, ys = inv_traffo_fun(np.linspace(min_row, max_row + 1), np.linspace(min_col, max_col + 1))
-            return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
+            if apply_mask:
+                data = np.ma.array(data, mask=np.stack([data_mask]*data.shape[0], axis=0))
+
+            xs, ys = inv_traffo_fun(np.arange(min_row, max_row).astype(float),
+                                    np.arange(min_col, max_col).astype(float))
         elif file_type == "NetCDF":
-            xr_data = xr.Dataset()
-            for i, filepath in enumerate(self.inventory['filepath']):
+            xr_dss = []
+            attrs = None
+            for filepath in self.filepaths:
                 nc_file = NcFile(filepath, mode='r')
-                xr_data = xr_data.merge(nc_file.read()[band][0, min_col:(max_col+1), min_row:(max_row+1)]) # assumes data has only one timestamp
-
-            data = self.decode(xr_data)
-            if data is None:
-                raise LoadingDataError()
+                xr_ds = nc_file.read()
+                if xr_ds is None:
+                    raise LoadingDataError()
+                attrs = xr_ds.attrs
+                xr_ar = self.decode(xr_ds[band][:, min_row:max_row, min_col:max_col])
+                # redeclare coordinates as dimensions:
+                for dim in list(xr_ds.dims.keys()):
+                    if dim not in xr_ar.dims:
+                        axis = len(xr_ar.dims)
+                        xr_ar = xr_ar.expand_dims(dim, axis=axis)
+                xr_dss.append(xr.Dataset({band: xr_ar}))
+            data = xr.merge(xr_dss)  # assumes data has only one timestamp
+            if attrs is not None:
+                data.attrs = attrs
 
             if apply_mask:
-                data.data = np.ma.array(data.data, mask=data_mask)
-
-            return self.__convert_dtype(data, dtype=dtype)
+                data.data = np.ma.array(data.data, mask=np.stack([data_mask] * data.data.shape[0], axis=0))
         else:
             raise FileTypeUnknown(file_type)
 
-    def load_by_pixels(self, rows, cols, row_size=None, col_size=None, band=1, dimension_name="tile", dtype="xarray"):
+        return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
+
+    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', dimension_name="tile", dtype="xarray",
+                       origin="ur"):
         """
         Loads data according to given pixel numbers, i.e. the row and column numbers and optionally a certain
         pixel window (`row_size` and `col_size`).
 
         Parameters
         ----------
-        rows : list of int
+        rows : list of int or int
             Row numbers.
-        cols : list of int
+        cols : list of int or int
             Column numbers.
         row_size : int, optional
-            Number of rows to read (counts from input argument `rows`).
+            Number of rows to read (counts from input argument `rows`, default is 1).
         col_size : int, optional
-            Number of columns to read (counts from input argument `cols`).
+            Number of columns to read (counts from input argument `cols`, default is 1).
         band : int or str, optional
             Band number or name (default is 1).
         dimension_name : str, optional
@@ -673,6 +693,13 @@ class EODataCube(object):
                 - 'xarray': loads data as an xarray.DataSet
                 - 'numpy': loads data as a numpy.ndarray
                 - 'dataframe': loads data as a pandas.DataFrame
+        origin: str, optional
+            Defines the world system origin of the pixel. It can be:
+                - upper left ("ul")
+                - upper right ("ur", default)
+                - lower right ("lr")
+                - lower left ("ll")
+                - center ("c")
 
         Returns
         -------
@@ -683,65 +710,76 @@ class EODataCube(object):
         if self.inventory is None:  # no data given
             return None
 
-        n = len(rows)
         if not isinstance(rows, list):
             rows = [rows]
         if not isinstance(cols, list):
             cols = [cols]
 
+        if self.grid:
+            if dimension_name not in self.dimensions:
+                raise DimensionUnkown(dimension_name)
+            tilenames = list(self.inventory[dimension_name])
+            if len(list(set(tilenames))) > 1:
+                raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
+            tilename = tilenames[0]
+            this_gt = self.grid.tilesys.create_tile(name=tilename).geotransform()
+        else:
+            _, this_gt = self.__get_georef()
+
+        inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
+        file_type = get_file_type(self.filepaths[0])
+
+        n = len(rows)
         data = []
-        xs = None
-        ys = None
+        xs = []
+        ys = []
         for i in range(n):
             row = rows[i]
             col = cols[i]
 
-            if self.grid:
-                tilenames = list(self.inventory[dimension_name])
-                if len(list(set(tilenames))) > 1:
-                    raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
-                tilename = tilenames[0]
-                inv_traffo_fun = lambda i, j: self.grid.tilesys.create_tile(name=tilename).ij2xy(i, j)
-            else:
-                this_sref, this_gt = self.__get_georef()
-                inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt)
-
-            file_type = get_file_type(self.inventory['filepath'][0])
             if file_type == "GeoTIFF":
-                if xs is None:
-                    xs = []
-                if ys is None:
-                    ys = []
-                file_ts = {'filenames': list(self.inventory['filepath'])}
+                file_ts = {'filenames': list(self.filepaths)}
                 gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
                 data_i = self.decode(gt_timestack.read_ts(col, row, col_size=col_size, row_size=row_size))
                 if data_i is None:
                     raise LoadingDataError()
                 data.append(data_i)
-                if row_size is not None and col_size is not None:
-                    xs_i, ys_i = inv_traffo_fun(np.linspace(row, row + row_size), np.linspace(col, col + col_size))
+                if row_size != 1 and col_size != 1:
+                    xs_i, ys_i = inv_traffo_fun(np.arange(row, row + row_size).astype(float),
+                                                np.arange(col, col + col_size).astype(float))
+                    xs_i = xs_i.tolist()
+                    ys_i = ys_i.tolist()
                 else:
                     xs_i, ys_i = inv_traffo_fun(row, col)
                 xs.append(xs_i)
                 ys.append(ys_i)
             elif file_type == "NetCDF":
-                xr_data = xr.Dataset()
-                for filepath in self.inventory['filepath']:
+                xr_dss = []
+                attrs = None
+                for filepath in self.filepaths:
                     nc_file = NcFile(filepath, mode='r')
-                    # assumes data has only one timestamp
-                    if row_size is not None and col_size is not None:
-                        data_i = self.decode(nc_file.read()[band][0, row:(row + row_size), col:(col + col_size)].data)
-                    else:
-                        data_i = self.decode(nc_file.read()[band][0, row, col].data)
-
-                    if data_i is None:
+                    xr_ds = nc_file.read()
+                    if xr_ds is None:
                         raise LoadingDataError()
-                    xr_data = xr_data.merge(data_i)
+                    attrs = xr_ds.attrs
+                    if row_size != 1 and col_size != 1:
+                        xr_ar = self.decode(xr_ds[band][:, row:(row + row_size), col:(col + col_size)])
+                    else:
+                        xr_ar = self.decode(xr_ds[band][:, row, col])
+                    # redeclare coordinates as dimensions:
+                    for dim in list(xr_ds.dims.keys()):
+                        if dim not in xr_ar.dims:
+                            axis = len(xr_ar.dims)
+                            xr_ar = xr_ar.expand_dims(dim, axis=axis)
+                    xr_dss.append(xr.Dataset({band: xr_ar}))
+                xr_data = xr.merge(xr_dss)  # assumes data has only one timestamp
+                if attrs is not None:
+                    xr_data.attrs = attrs
                 data.append(xr_data)
             else:
                 raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype, xs=np.unique(xs), ys=np.unique(ys), band=band)
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
 
     def load_by_coords(self, xs, ys, sref=None, band='1', dimension_name="tile", dtype="xarray", origin="ur"):
         """
@@ -764,6 +802,13 @@ class EODataCube(object):
                 - 'xarray': loads data as an xarray.DataSet
                 - 'numpy': loads data as a numpy.ndarray
                 - 'dataframe': loads data as a pandas.DataFrame
+        origin: str, optional
+            Defines the world system origin of the pixel. It can be:
+                - upper left ("ul")
+                - upper right ("ur", default)
+                - lower right ("lr")
+                - lower left ("ll")
+                - center ("c")
 
         Returns
         -------
@@ -779,27 +824,31 @@ class EODataCube(object):
         if not isinstance(ys, list):
             ys = [ys]
 
+        if self.grid is not None:
+            if dimension_name not in self.dimensions:
+                raise DimensionUnkown(dimension_name)
+            this_sref = None
+            if sref is not None:
+                this_sref = self.grid.core.projection.osr_spref
+            tilenames = list(self.inventory[dimension_name])
+            if len(list(set(tilenames))) > 1:
+                raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
+            tilename = tilenames[0]
+            this_gt = self.grid.tilesys.create_tile(name=tilename).geotransform()
+        else:
+            this_sref, this_gt = self.__get_georef()
+
         n = len(xs)
         data = []
         for i in range(n):
             x = xs[i]
             y = ys[i]
-            if self.grid is not None:
-                if sref is not None:
-                    tar_spref = self.grid.core.projection.osr_spref
-                    x, y = geometry.uv2xy(x, y, sref, tar_spref)
-                tilenames = list(self.inventory[dimension_name])
-                if len(list(set(tilenames))) > 1:
-                    raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
-                tilename = tilenames[0]
-                gt = self.grid.tilesys.create_tile(name=tilename).geotransform()
-            else:
-                this_sref, gt = self.__get_georef()
-                x, y = geometry.uv2xy(x, y, sref, this_sref)
 
-            row, col = xy2ij(x, y, gt)
+            if sref is not None:
+                x, y = geometry.uv2xy(x, y, sref, this_sref)
+            row, col = xy2ij(x, y, this_gt)
             # replace old coordinates with transformed coordinates related to the users definition
-            x_t, y_t = ij2xy(row, col, gt, origin=origin)
+            x_t, y_t = ij2xy(row, col, this_gt, origin=origin)
             xs[i] = x_t
             ys[i] = y_t
 
@@ -870,7 +919,13 @@ class EODataCube(object):
             if isinstance(data, list) and isinstance(data[0], np.ndarray):
                 ds = []
                 for i, entry in enumerate(data):
-                    xr_ar = xr.DataArray(entry, coords={'time': timestamps, 'x': [xs[i]], 'y': [ys[i]]},
+                    x = xs[i]
+                    y = ys[i]
+                    if not isinstance(x, list):
+                        x = [x]
+                    if not isinstance(y, list):
+                        y = [y]
+                    xr_ar = xr.DataArray(entry, coords={'time': timestamps, 'x': x, 'y': y},
                                          dims=['time', 'x', 'y'])
                     ds.append(xr.Dataset(data_vars={band: xr_ar}))
                 converted_data = xr.merge(ds)
@@ -880,6 +935,8 @@ class EODataCube(object):
             elif isinstance(data, np.ndarray):
                 xr_ar = xr.DataArray(data, coords={'time': timestamps, 'x': xs, 'y': ys}, dims=['time', 'x', 'y'])
                 converted_data = xr.Dataset(data_vars={band: xr_ar})
+            elif isinstance(data, xr.Dataset):
+                converted_data = data
             else:
                 raise DataTypeUnknown(type(data), dtype)
         elif dtype == "numpy":
@@ -892,27 +949,16 @@ class EODataCube(object):
                 converted_data = [np.array(entry[band].data) for entry in data]
                 if len(converted_data) == 1:
                     converted_data = converted_data[0]
+            elif isinstance(data, xr.Dataset):
+                converted_data = np.array(data[band].data)
             elif isinstance(data, np.ndarray):
                 converted_data = data
             else:
                 raise DataTypeUnknown(type(data), dtype)
         elif dtype == "dataframe":
-            if isinstance(data, list) and isinstance(data[0], np.ndarray):
-                dfs = []
-                for i, entry in enumerate(data):
-                    entry_list = entry.flatten().tolist()
-                    data_i = {'time': timestamps, 'x': [xs[i]]*len(entry_list), 'y': [ys[i]]*len(entry_list),
-                              band: entry_list}
-                    dfs.append(pd.DataFrame(data_i))
-                converted_data = reduce(lambda left, right: pd.merge(left, right), dfs)
-            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
-                dfs = [entry.to_dataframe() for entry in data]
-                converted_data = pd.concat(dfs).drop_duplicates().reset_index()
-            elif isinstance(data, np.ndarray):
-                xr_ar = xr.DataArray(data, coords={'time': timestamps, 'x': xs, 'y': ys}, dims=['time', 'x', 'y'])
-                converted_data = xr.Dataset(data_vars={band: xr_ar}).to_dataframe()
-            else:
-                raise DataTypeUnknown(type(data), dtype)
+            xr_ds = self.__convert_dtype(data, 'xarray', xs=xs, ys=ys, temporal_dim_name=temporal_dim_name,
+                                         band=band)
+            converted_data = xr_ds.to_dataframe()
         else:
             raise DataTypeUnknown(type(data), dtype)
 

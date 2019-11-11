@@ -2,25 +2,14 @@
 yeoda
 =====
 
-This is the documentation of **yeoda**.
-
-.. note::
-
-    This is the main page of your project's `Sphinx`_ documentation.
-    It is formatted in `reStructuredText`_. Add additional pages
-    by creating rst-files in ``docs`` and adding them to the `toctree`_ below.
-    Use then `references`_ in order to link them from this page, e.g.
-    :ref:`authors` and :ref:`changes`.
-
-    It is also possible to refer to the documentation of other Python packages
-    with the `Python domain syntax`_. By default you can reference the
-    documentation of `Sphinx`_, `Python`_, `NumPy`_, `SciPy`_, `matplotlib`_,
-    `Pandas`_, `Scikit-Learn`_. You can add more by extending the
-    ``intersphinx_mapping`` in your Sphinx's ``conf.py``.
-
-    The pretty useful extension `autodoc`_ is activated by default and lets
-    you include documentation from docstrings. Docstrings can be written in
-    `Google style`_ (recommended!), `NumPy style`_ and `classical style`_.
+*yeoda* stands for **y**our **e**arth **o**bservation **d**ata **a**ccess and provides lower and higher-level data cube
+classes to work with well-defined and structured earth observation data. These data cubes allow to filter, split and load data independently from the way the data is structured on the hard disk.
+Once the data structure is known to *yeoda*, it offers a user-friendly interface to access the data with the aforementioned operations.
+Internally, the package relies on functionalities provided by [*geopathfinder*](https://github.com/TUW-GEO/geopathfinder)
+(filepath/filename and folder structure handling library), [*veranda*](https://github.com/TUW-GEO/veranda) (IO classes and higher-level data structure classes for vector and raster data)
+and [*geospade*](https://github.com/TUW-GEO/geospade) (raster and vector geometry definitions and operations).
+Moreover, another very important part of *yeoda* is work with pre-defined grids like the [*Equi7Grid*](https://github.com/TUW-GEO/Equi7Grid) or the [*LatLonGrid*](https://github.com/TUW-GEO/latlongrid).
+These grid packages can simplify and speed up spatial operations to identify tiles/files of interest (e.g, bounding box request by a user).
 
 
 Contents
@@ -29,10 +18,12 @@ Contents
 .. toctree::
    :maxdepth: 2
 
+   Examples <examples>
+   Module Reference <api/modules>
    License <license>
    Authors <authors>
    Changelog <changelog>
-   Module Reference <api/modules>
+
 
 
 Indices and tables

@@ -329,7 +329,12 @@ class EODataCube(object):
         expressions : list, tuple, list of tuples or list of lists, optional
             Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
             are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
-            They have to have the same length as 'values'.
+            They have to have the same length as 'values'. The following comparison operators are allowed:
+            - '==': equal to
+            - '>=': larger than or equal to
+            - '<=': smaller than or equal to
+            - '>':  larger than
+            - '<':  smaller than
         name : str, optional
             Name of the dimension.
         in_place : boolean, optional
@@ -355,7 +360,12 @@ class EODataCube(object):
         expressions : list, tuple, list of tuples or list of lists, optional
             Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
             are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
-            They have to have the same length as 'values'.
+            They have to have the same length as 'values'. The following comparison operators are allowed:
+            - '==': equal to
+            - '>=': larger than or equal to
+            - '<=': smaller than or equal to
+            - '>':  larger than
+            - '<':  smaller than
         name : str, optional
             Name of the dimension.
 
@@ -1278,7 +1288,12 @@ class EODataCube(object):
         expressions : list, tuple, list of tuples or list of lists, optional
             Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
             are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
-            They have to have the same length as 'values'.
+            They have to have the same length as 'values'. The following comparison operators are allowed:
+            - '==': equal to
+            - '>=': larger than or equal to
+            - '<=': smaller than or equal to
+            - '>':  larger than
+            - '<':  smaller than
         name : str, optional
             Name of the dimension.
         split : boolean, optional

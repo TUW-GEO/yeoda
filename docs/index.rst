@@ -2,13 +2,13 @@
 yeoda
 =====
 
-*yeoda* stands for **y**our **e**arth **o**bservation **d**ata **a**ccess and provides lower and higher-level data cube
+*yeoda* stands for **y**\ our **e**\ arth **o**\ bservation **d**\ ata **a**\ ccess and provides lower and higher-level data cube
 classes to work with well-defined and structured earth observation data. These data cubes allow to filter, split and load data independently from the way the data is structured on the hard disk.
 Once the data structure is known to *yeoda*, it offers a user-friendly interface to access the data with the aforementioned operations.
-Internally, the package relies on functionalities provided by [*geopathfinder*](https://github.com/TUW-GEO/geopathfinder)
-(filepath/filename and folder structure handling library), [*veranda*](https://github.com/TUW-GEO/veranda) (IO classes and higher-level data structure classes for vector and raster data)
-and [*geospade*](https://github.com/TUW-GEO/geospade) (raster and vector geometry definitions and operations).
-Moreover, another very important part of *yeoda* is work with pre-defined grids like the [*Equi7Grid*](https://github.com/TUW-GEO/Equi7Grid) or the [*LatLonGrid*](https://github.com/TUW-GEO/latlongrid).
+Internally, the package relies on functionalities provided by `geopathfinder <https://github.com/TUW-GEO/geopathfinder>`_
+(filepath/filename and folder structure handling library), `veranda <https://github.com/TUW-GEO/veranda>`_ (IO classes and higher-level data structure classes for vector and raster data)
+and `geospade <https://github.com/TUW-GEO/geospade>`_ (raster and vector geometry definitions and operations).
+Moreover, another very important part of *yeoda* is work with pre-defined grids like the `Equi7Grid <https://github.com/TUW-GEO/Equi7Grid>`_ or the `LatLonGrid <https://github.com/TUW-GEO/latlongrid>`_.
 These grid packages can simplify and speed up spatial operations to identify tiles/files of interest (e.g, bounding box request by a user).
 
 
@@ -19,6 +19,7 @@ Contents
    :maxdepth: 2
 
    Examples <examples>
+   Installation <install>
    Module Reference <api/modules>
    License <license>
    Authors <authors>

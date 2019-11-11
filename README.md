@@ -26,7 +26,7 @@ tiles, e.g. you can only load data from one tile and one band. This will change 
 Most changes will take place in *veranda* and *geospade*, so the actual interface to the data given by *yeoda* should stay approximately the same.
 ## Installation
 The package can be either installed via pip or if you solely want to work with *yeoda* or contribute, we recommend to 
-install it as conda environment.
+install it as a conda environment.
 ### pip
 To install *yeoda* via pip in you own environment, use:
 ```

@@ -131,10 +131,10 @@ The statement below filters for two Equi7 grid tiles at 10m covering Austria.
    tilenames = ["E048N015T1", "E052N016T1"]
    dc.filter_spatially_by_tilename(tilenames, dimension_name="tile", in_place=True, use_grid=True)
 
-.. _sfilter_geom:
+.. _sfilterGeom:
 
-Spatial filtering with a a geometry
------------------------------------
+Spatial filtering with a geometry
+---------------------------------
 Works very similar as ``filter_spatially_by_tilename``, but this time you can filter by an arbitrary geometry, e.g.
 a Shapely geometry, and OGR geometry or a list of bounding box coordinates.
 
@@ -273,7 +273,7 @@ from top to bottom (rows) starting at the given row and column coordinates.
 
 Loading data by geometries
 --------------------------
-Relying on the same geometry types as described in sfilter_geom_, you can also load data for a region defined by an arbitrary geometry.
+Relying on the same geometry types as described in `Spatial filtering with a geometry`_, you can also load data for a region defined by an arbitrary geometry.
 Geometries do not need to be axis-parallel, so additional data has to be loaded to follow an array-like structure.
 If one is not interested in values outside the region of interest, it is possible to set the keyword parameter ``apply_mask`` to true.
 

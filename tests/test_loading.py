@@ -28,9 +28,7 @@
 # policies, either expressed or implied, of the FreeBSD Project.
 
 """
-Created in November, 2019
 Main code for testing to load data with a data cube.
-@author: Claudio Navacchi, claudio.navacchi@geo.tuwien.ac.at
 """
 
 # general imports

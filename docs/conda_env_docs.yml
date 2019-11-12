@@ -1,4 +1,4 @@
-name: yeoda
+name: yeoda-doc
 channels:
   - conda-forge
 dependencies:

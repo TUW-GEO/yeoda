@@ -9,4 +9,4 @@ python:
         path: .
 
 conda:
-  environment: docs/environment.yml
+  environment: docs/conda_env_docs.yml

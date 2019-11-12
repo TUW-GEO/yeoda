@@ -47,7 +47,7 @@ def setup_gt_test_data():
     combs = itertools.product(var_names, pols, directions, timestamps, tilenames)
 
     rows, cols = np.meshgrid(np.arange(0, 1600), np.arange(0, 1600))
-    data = rows + cols
+    data = (rows + cols).astype(float)
     equi7 = Equi7Grid(500)
 
     filepaths = []
@@ -111,7 +111,7 @@ def setup_nc_multi_test_data():
     combs = itertools.product(pols, directions, timestamps)
 
     rows, cols = np.meshgrid(np.arange(0, 1600), np.arange(0, 1600))
-    data = rows + cols
+    data = (rows + cols).astype(float)
     equi7 = Equi7Grid(500)
     tile_oi = equi7.EU.tilesys.create_tile(name="E042N012T6")
 

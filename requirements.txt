@@ -1,10 +1,4 @@
-regex
-netCDF4
-geopandas>=0.6.1
-xarray
-dask
-pytileproj==0.0.12
-Equi7Grid==0.0.10
-git+https://github.com/TUW-GEO/veranda.git
-git+https://github.com/TUW-GEO/geopathfinder.git
+# remaining and currently not officially released requirements
+git+https://github.com/TUW-GEO/veranda.git@master
+git+https://github.com/TUW-GEO/geopathfinder.git@master
 

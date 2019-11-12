@@ -2,10 +2,10 @@
 
 # yeoda
 [![Build Status](https://travis-ci.org/TUW-GEO/yeoda.svg?branch=master)](https://travis-ci.org/TUW-GEO/yeoda)
-[![Build Status](https://coveralls.io/repos/TUW-GEO/yeoda/yeoda.png?branch=master)](https://coveralls.io/r/TUW-GEO/yeoda?branch=master)
-[![Build Status](https://badge.fury.io/py/yeoda.svg)](https://badge.fury.io/py/yeoda)
-[![Build Status](https://readthedocs.org/projects/yeoda/badge/?version=latest)](https://yeoda.readthedocs.io/en/latest/?badge=latest)
-
+[![Coverage](https://coveralls.io/repos/TUW-GEO/yeoda/yeoda.png?branch=master)](https://coveralls.io/r/TUW-GEO/yeoda?branch=master)
+[![PyPi Package](https://badge.fury.io/py/yeoda.svg)](https://badge.fury.io/py/yeoda)
+[![RTD](https://readthedocs.org/projects/yeoda/badge/?version=latest)](https://yeoda.readthedocs.io/en/latest/?badge=latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 *Earth Observation (EO) data, I must read.*
 

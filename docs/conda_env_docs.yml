@@ -8,6 +8,7 @@ dependencies:
   - netCDF4
   - xarray
   - dask
+  - pip
   - pip:
     - geopandas>=0.6.1
     - pytileproj==0.0.12

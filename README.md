@@ -1,4 +1,4 @@
-<img align="right" src="./docs/imgs/yeoda_logo.png" height="300" width="435">
+<img align="right" src="https://github.com/TUW-GEO/yeoda/raw/master/docs/imgs/yeoda_logo.png" height="300" width="435">
 
 # yeoda
 [![Build Status](https://travis-ci.com/TUW-GEO/yeoda.svg?branch=master)](https://travis-ci.org/TUW-GEO/yeoda)

@@ -1,6 +1,6 @@
 regex
 netCDF4
-geopandas
+geopandas>=0.6.1
 xarray
 dask
 pytileproj==0.0.12

@@ -1,0 +1,16 @@
+name: yeoda
+channels:
+  - conda-forge
+dependencies:
+  - python=3.6
+  - gdal=2.4.3
+  - regex
+  - netCDF4
+  - xarray
+  - dask
+  - pip:
+    - geopandas>=0.6.1
+    - pytileproj==0.0.12
+    - Equi7Grid==0.0.10
+    - git+https://github.com/TUW-GEO/veranda.git
+    - git+https://github.com/TUW-GEO/geopathfinder.git@hotfix

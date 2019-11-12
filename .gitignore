@@ -47,3 +47,7 @@ MANIFEST
 
 # Per-project virtualenvs
 .venv*/
+
+# testdata
+/tests/testdata/
+/tests/data/

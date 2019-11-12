@@ -13,4 +13,4 @@ dependencies:
     - pytileproj==0.0.12
     - Equi7Grid==0.0.10
     - git+https://github.com/TUW-GEO/veranda.git
-    - git+https://github.com/TUW-GEO/geopathfinder.git@hotfix
+    - git+https://github.com/TUW-GEO/geopathfinder.git

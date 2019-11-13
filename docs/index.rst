@@ -3,8 +3,7 @@ yeoda
 =====
 
 *yeoda* stands for **y**\ our **e**\ arth **o**\ bservation **d**\ ata **a**\ ccess and provides lower and higher-level data cube
-classes to work with well-defined and structured earth observation data. These data cubes allow to filter, split and load data independently from the way the data is structured on the hard disk.
-Once the data structure is known to *yeoda*, it offers a user-friendly interface to access the data with the aforementioned operations.
+classes to work with well-defined and structured earth observation data. These data cubes allow to filter, split and load data independently from the way the data is structured on the hard disk. Once the data structure is known to *yeoda*, it offers a user-friendly interface to access the data with the aforementioned operations.
 Internally, the package relies on functionalities provided by `geopathfinder <https://github.com/TUW-GEO/geopathfinder>`_
 (filepath/filename and folder structure handling library), `veranda <https://github.com/TUW-GEO/veranda>`_ (IO classes and higher-level data structure classes for vector and raster data)
 and `geospade <https://github.com/TUW-GEO/geospade>`_ (raster and vector geometry definitions and operations).

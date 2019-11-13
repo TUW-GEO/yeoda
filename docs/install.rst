@@ -3,12 +3,12 @@ Installation
 ============
 
 The package can be either installed via pip or if you solely want to work with *yeoda* or contribute, we recommend to
-install it as a conda environment.
+install it as a conda environment. If you work already with your own environment, please have look at ``requirements.txt``.
 
 pip
 ===
 
-To install *yeoda* via pip in you own environment, use:
+To install *yeoda* via pip in your own environment, use:
 
 .. code-block:: console
 
@@ -16,7 +16,7 @@ To install *yeoda* via pip in you own environment, use:
 
 conda
 =====
-The packages also comes along with an own conda environment (``conda_env.yml``).
+The packages also comes along with two conda environments, one for Linux (``conda_env_linux.yml``) and one for Windows (``conda_env_windows.yml``).
 This is especially recommended if you want to contribute to the project.
 The following script will install miniconda and setup the environment on a UNIX
 like system. Miniconda will be installed into ``$HOME/miniconda``.
@@ -26,7 +26,7 @@ like system. Miniconda will be installed into ``$HOME/miniconda``.
    wget http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
    bash miniconda.sh -b -p $HOME/miniconda
    export PATH="$HOME/miniconda/bin:$PATH"
-   conda env create -f conda_env.yml
+   conda env create -f conda_env_linux.yml
    source activate yeoda
 
 This script adds ``$HOME/miniconda/bin`` temporarily to the ``PATH`` to do this
@@ -45,7 +45,7 @@ For Windows, use the following setup:
 
         .. code-block:: console
 
-            conda env create -f conda_env.yml
+            conda env create -f conda_env_windows.yml
             source activate yeoda
 
 

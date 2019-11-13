@@ -48,6 +48,8 @@ MANIFEST
 # Per-project virtualenvs
 .venv*/
 
+# user scripts
+.scripts
+
 # testdata
-/tests/testdata/
 /tests/data/

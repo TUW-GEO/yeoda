@@ -79,3 +79,16 @@ If you want to contribute please follow these steps:
   * Please include tests for your contributions in one of the test directories.
     We use *py.test* so a simple function called ``test_my_feature`` is enough
   * Submit a pull request to our master branch
+  
+## Citation
+
+[![DOI](https://zenodo.org/badge/186986862.svg)](https://zenodo.org/badge/latestdoi/186986862)
+
+If you use this software in a publication then please cite it using the Zenodo DOI.
+Be aware that this badge links to the latest package version.
+
+Please select your specific version at <https://doi.org/10.5281/zenodo.3540693> (link to first release) to get the DOI of that version.
+You should normally always use the DOI for the specific version of your record in citations.
+This is to ensure that other researchers can access the exact research artefact you used for reproducibility.
+
+You can find additional information regarding DOI versioning at <http://help.zenodo.org/#versioning>.

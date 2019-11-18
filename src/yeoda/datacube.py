@@ -592,8 +592,8 @@ class EODataCube(object):
 
         return self.split_by_dimension(values, expressions, name=name)
 
-    def load_by_geom(self, geom, sref=None, dimension_name="tile", band='1', apply_mask=False, dtype="xarray",
-                     origin='c'):
+    def load_by_geom(self, geom, sref=None, band='1', spatial_dim_name="tile", temporal_dim_name="time",
+                     apply_mask=False, dtype="xarray", origin='ur'):
         """
         Loads data according to a given geometry.
 
@@ -607,8 +607,10 @@ class EODataCube(object):
             Spatial reference of the given region of interest `geom`.
         band : int or str, optional
             Band number or name (default is 1).
-        dimension_name : str, optional
+        spatial_dim_name : str, optional
             Name of the spatial dimension (default: 'tile').
+        temporal_dim_name : str, optional
+            Name of the temporal dimension (default: 'time').
         apply_mask : bool, optional
             If true, a numpy mask array with a mask excluding (=1) all pixels outside `geom` (=0) will be created
             (default is True).
@@ -635,12 +637,12 @@ class EODataCube(object):
             return None
 
         if self.grid:
-            if dimension_name not in self.dimensions:
-                raise DimensionUnkown(dimension_name)
+            if spatial_dim_name not in self.dimensions:
+                raise DimensionUnkown(spatial_dim_name)
             this_sref = None
             if sref is not None:
                 this_sref = self.grid.core.projection.osr_spref
-            tilenames = list(self.inventory[dimension_name])
+            tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
@@ -708,10 +710,10 @@ class EODataCube(object):
         else:
             raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
+        return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
-    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', dimension_name="tile", dtype="xarray",
-                       origin="ur"):
+    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', spatial_dim_name="tile",
+                       temporal_dim_name="time", dtype="xarray", origin="ur"):
         """
         Loads data according to given pixel numbers, i.e. the row and column numbers and optionally a certain
         pixel window (`row_size` and `col_size`).
@@ -728,8 +730,10 @@ class EODataCube(object):
             Number of columns to read (counts from input argument `cols`, default is 1).
         band : int or str, optional
             Band number or name (default is 1).
-        dimension_name : str, optional
+        spatial_dim_name : str, optional
             Name of the spatial dimension (default: 'tile').
+        temporal_dim_name : str, optional
+            Name of the temporal dimension (default: 'time').
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
@@ -758,9 +762,9 @@ class EODataCube(object):
             cols = [cols]
 
         if self.grid:
-            if dimension_name not in self.dimensions:
-                raise DimensionUnkown(dimension_name)
-            tilenames = list(self.inventory[dimension_name])
+            if spatial_dim_name not in self.dimensions:
+                raise DimensionUnkown(spatial_dim_name)
+            tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
@@ -821,9 +825,10 @@ class EODataCube(object):
             else:
                 raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
-    def load_by_coords(self, xs, ys, sref=None, band='1', dimension_name="tile", dtype="xarray", origin="ur"):
+    def load_by_coords(self, xs, ys, sref=None, band='1', spatial_dim_name="tile", temporal_dim_name="time",
+                       dtype="xarray", origin="ur"):
         """
         Loads data as a 1-D array according to a given coordinate.
 
@@ -837,8 +842,10 @@ class EODataCube(object):
             Spatial reference referring to the world system coordinates `x` and `y`.
         band : int or str, optional
             Band number or name (default is 1).
-        dimension_name : str, optional
+        spatial_dim_name : str, optional
             Name of the spatial dimension (default: 'tile').
+        temporal_dim_name : str, optional
+            Name of the temporal dimension (default: 'time').
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
@@ -867,12 +874,12 @@ class EODataCube(object):
             ys = [ys]
 
         if self.grid is not None:
-            if dimension_name not in self.dimensions:
-                raise DimensionUnkown(dimension_name)
+            if spatial_dim_name not in self.dimensions:
+                raise DimensionUnkown(spatial_dim_name)
             this_sref = None
             if sref is not None:
                 this_sref = self.grid.core.projection.osr_spref
-            tilenames = list(self.inventory[dimension_name])
+            tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
@@ -925,7 +932,7 @@ class EODataCube(object):
             else:
                 raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
     def __convert_dtype(self, data, dtype, xs=None, ys=None, temporal_dim_name='time', band=1):
         """
@@ -945,7 +952,7 @@ class EODataCube(object):
         ys : list, optional
             List of world system coordinates in Y direction.
         temporal_dim_name : str, optional
-            Name of the temporal dimension (default: 'tile').
+            Name of the temporal dimension (default: 'time').
         band : int or str, optional
             Band number or name (default is 1).
 
@@ -955,9 +962,8 @@ class EODataCube(object):
             Data as an array-like object.
         """
 
-        timestamps = self[temporal_dim_name]
-
         if dtype == "xarray":
+            timestamps = self[temporal_dim_name]
             if isinstance(data, list) and isinstance(data[0], np.ndarray):
                 ds = []
                 for i, entry in enumerate(data):

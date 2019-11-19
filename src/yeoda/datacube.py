@@ -478,8 +478,8 @@ class EODataCube(object):
         if self.grid:
             ftilenames = self.grid.search_tiles_over_geometry(geom_roi)
             tilenames = [ftilename.split('_')[1] for ftilename in ftilenames]
-            self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, in_place=in_place,
-                                              use_grid=False)
+            return self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, in_place=in_place,
+                                                     use_grid=False)
         elif 'geometry' in self.inventory.keys():
             # get spatial reference of data
             geom_roi = self.align_geom(geom_roi)

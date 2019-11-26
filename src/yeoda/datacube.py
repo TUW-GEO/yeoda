@@ -50,6 +50,7 @@ import pytileproj.geometry as geometry
 from veranda.geotiff import GeoTiffFile
 from veranda.netcdf import NcFile
 from veranda.timestack import GeoTiffRasterTimeStack
+from veranda.timestack import NcRasterTimeStack
 
 # load yeoda's utils module
 from yeoda.utils import get_file_type
@@ -93,6 +94,18 @@ def _check_inventory(f):
     return f_wrapper
 
 
+def _set_status(status):
+    def decorator(f):
+        def f_wrapper(self, *args, **kwargs):
+            ret_val = f(self, *args, **kwargs)
+            in_place = kwargs.get('in_place', None)
+            if in_place:
+                self.status = status
+            return ret_val
+        return f_wrapper
+    return decorator
+
+
 class EODataCube(object):
     """
     A file(name) based data cube for preferably gridded and well-structured EO data.
@@ -124,6 +137,8 @@ class EODataCube(object):
 
         # initialise simple class variables
         self.smart_filename_creator = smart_filename_creator
+        self._ds = None  # data set pointer
+        self.status = None
 
         # initialise IO classes responsible for reading and writing
         if io_map is not None:
@@ -139,10 +154,11 @@ class EODataCube(object):
             self.__inventory_from_filepaths(filepaths, dimensions=dimensions,
                                             smart_filename_creator=smart_filename_creator)
 
+        dimensions = [] if dimensions is None else dimensions
         self.grid = None
         if grid:
             self.grid = grid
-        elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()):
+        elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()) and ('geometry' in dimensions):
             geometries = [self.__geometry_from_file(filepath) for filepath in self.filepaths]
             self.add_dimension('geometry', geometries, in_place=True)
 
@@ -249,6 +265,7 @@ class EODataCube(object):
         inventory = self.inventory.assign(**{name: GeoSeries(values, index=self.inventory.index)})
         return self.__assign_inventory(inventory, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def filter_files_with_pattern(self, pattern, full_path=False, in_place=False):
         """
@@ -280,6 +297,7 @@ class EODataCube(object):
         inventory = self.inventory[idx_filter]
         return self.__assign_inventory(inventory, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def filter_by_metadata(self, metadata, in_place=False):
         """
@@ -321,6 +339,7 @@ class EODataCube(object):
         inventory = self.inventory[bool_filter]
         return self.__assign_inventory(inventory, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def sort_by_dimension(self, name, ascending=True, in_place=False):
         """
@@ -351,6 +370,7 @@ class EODataCube(object):
         else:
             return self.from_inventory(inventory=inventory_sorted, grid=self.grid)
 
+    @_set_status('changed')
     def filter_by_dimension(self, values, expressions=None, name="time", in_place=False):
         """
         Filters the data cube according to the given extents and returns a (new) data cube.
@@ -409,6 +429,7 @@ class EODataCube(object):
 
         return self.__filter_by_dimension(values, expressions=expressions, name=name, split=True)
 
+    @_set_status('changed')
     def filter_spatially_by_tilename(self, tilenames, dimension_name="tile", in_place=False, use_grid=True):
         """
         Spatially filters the data cube by tile names.
@@ -448,6 +469,7 @@ class EODataCube(object):
         else:
             return self.filter_by_dimension(tilenames, name=dimension_name, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def filter_spatially_by_geom(self, geom, sref=None, dimension_name="tile", in_place=False):
         """
@@ -486,6 +508,8 @@ class EODataCube(object):
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
             inventory = self.inventory[self.inventory.intersects(geom_roi)]
             return self.__assign_inventory(inventory, in_place=in_place)
+        else:
+            return self
 
     def split_monthly(self, name='time', months=None):
         """
@@ -592,6 +616,7 @@ class EODataCube(object):
 
         return self.split_by_dimension(values, expressions, name=name)
 
+    @_set_status('stable')
     def load_by_geom(self, geom, sref=None, band='1', spatial_dim_name="tile", temporal_dim_name="time",
                      apply_mask=False, dtype="xarray", origin='ur'):
         """
@@ -674,9 +699,10 @@ class EODataCube(object):
         xs = None
         ys = None
         if file_type == "GeoTIFF":
-            file_ts = {'filenames': list(self.filepaths)}
-            gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-            data = self.decode(gt_timestack.read_ts(min_row, min_col, col_size=col_size, row_size=row_size))
+            if self._ds is None or self.status != "stable":
+                file_ts = {'filenames': list(self.filepaths)}
+                self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
+            data = self.decode(self._ds.read_ts(min_row, min_col, col_size=col_size, row_size=row_size))
             if data is None:
                 raise LoadingDataError()
 
@@ -686,24 +712,12 @@ class EODataCube(object):
             xs, ys = inv_traffo_fun(np.arange(min_row, max_row).astype(float),
                                     np.arange(min_col, max_col).astype(float))
         elif file_type == "NetCDF":
-            xr_dss = []
-            attrs = None
-            for filepath in self.filepaths:
-                nc_file = NcFile(filepath, mode='r')
-                xr_ds = nc_file.read()
-                if xr_ds is None:
-                    raise LoadingDataError()
-                attrs = xr_ds.attrs
-                xr_ar = self.decode(xr_ds[band][:, min_row:max_row, min_col:max_col])
-                # redeclare coordinates as dimensions:
-                for dim in list(xr_ds.dims.keys()):
-                    if dim not in xr_ar.dims:
-                        axis = len(xr_ar.dims)
-                        xr_ar = xr_ar.expand_dims(dim, axis=axis)
-                xr_dss.append(xr.Dataset({band: xr_ar}))
-            data = xr.merge(xr_dss)  # assumes data has only one timestamp
-            if attrs is not None:
-                data.attrs = attrs
+            if self._ds is None or self.status != "stable":
+                file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
+                self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+            data = self.decode(self._ds.read()[band][:, min_row:max_row, min_col:max_col].to_dataset())
+            if data is None:
+                raise LoadingDataError()
 
             if apply_mask:
                 data.data = np.ma.array(data.data, mask=np.stack([data_mask] * data.data.shape[0], axis=0))
@@ -712,6 +726,7 @@ class EODataCube(object):
 
         return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
+    @_set_status('stable')
     def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', spatial_dim_name="tile",
                        temporal_dim_name="time", dtype="xarray", origin="ur"):
         """
@@ -784,9 +799,11 @@ class EODataCube(object):
             col = cols[i]
 
             if file_type == "GeoTIFF":
-                file_ts = {'filenames': list(self.filepaths)}
-                gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-                data_i = self.decode(gt_timestack.read_ts(col, row, col_size=col_size, row_size=row_size))
+                if self._ds is None or self.status != "stable":
+                    file_ts = {'filenames': list(self.filepaths)}
+                    self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
+
+                data_i = self.decode(self._ds.read_ts(col, row, col_size=col_size, row_size=row_size))
                 if data_i is None:
                     raise LoadingDataError()
                 data.append(data_i)
@@ -800,33 +817,20 @@ class EODataCube(object):
                 xs.append(xs_i)
                 ys.append(ys_i)
             elif file_type == "NetCDF":
-                xr_dss = []
-                attrs = None
-                for filepath in self.filepaths:
-                    nc_file = NcFile(filepath, mode='r')
-                    xr_ds = nc_file.read()
-                    if xr_ds is None:
-                        raise LoadingDataError()
-                    attrs = xr_ds.attrs
-                    if row_size != 1 and col_size != 1:
-                        xr_ar = self.decode(xr_ds[band][:, row:(row + row_size), col:(col + col_size)])
-                    else:
-                        xr_ar = self.decode(xr_ds[band][:, row, col])
-                    # redeclare coordinates as dimensions:
-                    for dim in list(xr_ds.dims.keys()):
-                        if dim not in xr_ar.dims:
-                            axis = len(xr_ar.dims)
-                            xr_ar = xr_ar.expand_dims(dim, axis=axis)
-                    xr_dss.append(xr.Dataset({band: xr_ar}))
-                xr_data = xr.merge(xr_dss)  # assumes data has only one timestamp
-                if attrs is not None:
-                    xr_data.attrs = attrs
-                data.append(xr_data)
+                if self._ds is None or self.status != "stable":
+                    file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
+                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+                if row_size != 1 and col_size != 1:
+                    data_i = self.decode(self._ds.read()[band][:, row:(row + row_size), col:(col + col_size)].to_dataset())
+                else:
+                    data_i = self.decode(self._ds.read()[band][:, row:(row + 1), col:(col + 1)].to_dataset())  # +1 to keep the dimension
+                data.append(data_i)
             else:
                 raise FileTypeUnknown(file_type)
 
         return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
+    @_set_status('stable')
     def load_by_coords(self, xs, ys, sref=None, band='1', spatial_dim_name="tile", temporal_dim_name="time",
                        dtype="xarray", origin="ur"):
         """
@@ -903,34 +907,21 @@ class EODataCube(object):
 
             file_type = get_file_type(self.filepaths[0])
             if file_type == "GeoTIFF":
-                file_ts = {'filenames': self.filepaths}
-                gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-                data_i = self.decode(gt_timestack.read_ts(col, row))
-                if data_i is None:
-                    raise LoadingDataError()
-                data.append(data_i)
+                if self._ds is None or self.status != "stable":
+                    file_ts = {'filenames': self.filepaths}
+                    self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
+                data_i = self.decode(self._ds.read_ts(col, row))
             elif file_type == "NetCDF":
-                xr_dss = []
-                attrs = None
-                for filepath in self.filepaths:
-                    nc_file = NcFile(filepath, mode='r')
-                    xr_ds = nc_file.read()
-                    if xr_ds is None:
-                        raise LoadingDataError()
-                    attrs = xr_ds.attrs
-                    xr_ar = self.decode(xr_ds[band][:, row, col])
-                    # redeclare coordinates as dimensions:
-                    for dim in list(xr_ds.dims.keys()):
-                        if dim not in xr_ar.dims:
-                            axis = len(xr_ar.dims)
-                            xr_ar = xr_ar.expand_dims(dim, axis=axis)
-                    xr_dss.append(xr.Dataset({band: xr_ar}))
-                xr_data = xr.merge(xr_dss)  # assumes data has only one timestamp
-                if attrs is not None:
-                    xr_data.attrs = attrs
-                data.append(xr_data)
+                if self._ds is None or self.status != "stable":
+                    file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
+                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+                data_i = self.decode(self._ds.read()[band][:, row:(row + 1), col:(col + 1)].to_dataset())  # +1 to keep the dimension
             else:
                 raise FileTypeUnknown(file_type)
+
+            if data_i is None:
+                raise LoadingDataError()
+            data.append(data_i)
 
         return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
@@ -1046,6 +1037,7 @@ class EODataCube(object):
 
         return data
 
+    @_set_status('changed')
     @_check_inventory
     def intersect(self, dc_other, on_dimension=None, in_place=False):
         """
@@ -1073,6 +1065,7 @@ class EODataCube(object):
         dc_intersected = intersect_datacubes([self, dc_other], on_dimension=on_dimension)
         return self.__assign_inventory(dc_intersected.inventory, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def unite(self, dc_other, in_place=False):
         """
@@ -1099,6 +1092,7 @@ class EODataCube(object):
         dc_united = unite_datacubes([self, dc_other])
         return self.__assign_inventory(dc_united.inventory, in_place=in_place)
 
+    @_set_status('changed')
     def align_dimension(self, dc_other, name, in_place=False):
         """
         Aligns this data cube with another data cube along the specified dimension `name`.
@@ -1172,6 +1166,9 @@ class EODataCube(object):
         geom = geometry.transform_geometry(geom, this_sref)
 
         return geom
+
+    def close_ds(self):
+        self._ds.close()
 
     def __get_georef(self):
         """

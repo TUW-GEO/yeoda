@@ -75,7 +75,7 @@ class EODataCubeTester(unittest.TestCase):
 
         dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=smart_filename_creator,
                         dimensions=['time', 'var_name', 'pol'])
-        assert len(dc.dimensions) == 1
+        assert len(dc.dimensions) == 0
         assert len(dc) == len(self.gt_filepaths)
 
     def test_rename_dimension(self):

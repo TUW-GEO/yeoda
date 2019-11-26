@@ -38,6 +38,7 @@ import unittest
 import osr
 import numpy as np
 import xarray as xr
+import dask.array as da
 
 # test data imports
 from tests.setup_test_data import setup_gt_test_data
@@ -113,7 +114,7 @@ class LoadingCoordsTester(LoadingTester):
         self.y = 1314750.
 
         self.ref_np_ar = (np.array([[[self.row + self.col]*4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
-        xr_ar = xr.DataArray(data=self.ref_np_ar.astype(float),
+        xr_ar = xr.DataArray(data=da.array(self.ref_np_ar.astype(float)).rechunk((1, 1, 1)),
                              coords={'time': self.timestamps, 'x': [self.x], 'y': [self.y]},
                              dims=['time', 'x', 'y'])
         self.ref_xr_ds = xr.Dataset(data_vars={'1': xr_ar})
@@ -170,11 +171,13 @@ class LoadingCoordsTester(LoadingTester):
 
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, spatial_dim_name='tile_name', dtype='numpy')
         assert (self.ref_np_ar == data).all()
+        dc.close_ds()
 
         ref_data_list = [self.ref_np_ar, self.ref_np_ar]
         data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
                                  spatial_dim_name='tile_name', dtype='numpy')
         assert (ref_data_list[0] == data[0]).all() & (ref_data_list[1] == data[1]).all()
+        dc.close_ds()
 
     def test_load_nc2xarray_by_coord(self):
         """ Tests loading of an xarray array from NetCDF files by geographic coordinates. """
@@ -184,11 +187,13 @@ class LoadingCoordsTester(LoadingTester):
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, spatial_dim_name='tile_name', dtype='xarray',
                                  origin='c')
         assert self.ref_xr_ds.equals(data)
+        dc.close_ds()
 
         ref_data_list = [self.ref_xr_ds, self.ref_xr_ds]
         data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
                                  spatial_dim_name='tile_name', dtype='xarray', origin='c')
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
+        dc.close_ds()
 
     def test_load_nc2dataframe_by_coord(self):
         """ Tests loading of a Pandas data frame from NetCDF files by geographic coordinates. """
@@ -198,11 +203,13 @@ class LoadingCoordsTester(LoadingTester):
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, spatial_dim_name='tile_name', dtype='dataframe',
                                  origin='c')
         assert self.ref_pd_df.equals(data)
+        dc.close_ds()
 
         ref_data_list = [self.ref_pd_df, self.ref_pd_df]
         data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
                                  spatial_dim_name='tile_name', dtype='dataframe', origin='c')
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
+        dc.close_ds()
 
     def test_load_singlenc2xarray_by_coord(self):
         """ Tests loading of an xarray array from a multidimensional NetCDF file by geographic coordinates. """
@@ -211,6 +218,7 @@ class LoadingCoordsTester(LoadingTester):
                         dimensions=['time'])
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, band='SIG0', dtype='xarray', origin='c')
         assert self.ref_xr_ds.equals(data.rename({'SIG0': '1'}))
+        dc.close_ds()
 
 
 class LoadingPixelsTester(LoadingTester):
@@ -246,7 +254,7 @@ class LoadingPixelsTester(LoadingTester):
         base_np_ar_2D = rows + cols
         base_np_ar = np.stack([base_np_ar_2D]*4, axis=0)
         self.ref_np_ar_area = (base_np_ar + np.arange(0, 4)[:, None, None]).astype(float)
-        xr_ar = xr.DataArray(data=self.ref_np_ar_area.astype(float),
+        xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, 10, 10)),
                              coords={'time': self.timestamps, 'x': xs, 'y': ys},
                              dims=['time', 'x', 'y'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
@@ -300,10 +308,12 @@ class LoadingPixelsTester(LoadingTester):
 
         data = dc.load_by_pixels(self.row, self.col, spatial_dim_name='tile_name', dtype='numpy')
         assert (self.ref_np_ar == data).all()
+        dc.close_ds()
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
                                  spatial_dim_name='tile_name', dtype='numpy')
         assert (self.ref_np_ar_area == data).all()
+        dc.close_ds()
 
     def test_load_nc2xarray_by_pixels(self):
         """ Tests loading of an xarray array from NetCDF files by pixel coordinates. """
@@ -313,11 +323,13 @@ class LoadingPixelsTester(LoadingTester):
         data = dc.load_by_pixels(self.row, self.col, spatial_dim_name='tile_name', dtype='xarray', origin='c')
         data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds.equals(data)
+        dc.close_ds()
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
                                  spatial_dim_name='tile_name', dtype='xarray', origin='c')
         data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds_area.equals(data)
+        dc.close_ds()
 
     def test_load_nc2dataframe_by_pixels(self):
         """ Tests loading of a Pandas data frame from NetCDF files by pixel coordinates. """
@@ -327,11 +339,13 @@ class LoadingPixelsTester(LoadingTester):
         data = dc.load_by_pixels(self.row, self.col, spatial_dim_name='tile_name', dtype='dataframe', origin='c')
         data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df.equals(data)
+        dc.close_ds()
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
                                  spatial_dim_name='tile_name', dtype='dataframe', origin='c')
         data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df_area.equals(data)
+        dc.close_ds()
 
     def test_load_singlenc2xarray_by_pixels(self):
         """ Tests loading of an xarray array from a multidimensional NetCDF file by pixel coordinates. """
@@ -341,6 +355,7 @@ class LoadingPixelsTester(LoadingTester):
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, band='SIG0',
                                  dtype='xarray', origin='c')
         assert self.ref_xr_ds_area.equals(data.rename({'SIG0': '1'}))
+        dc.close_ds()
 
 
 class LoadingGeomTester(LoadingTester):
@@ -375,7 +390,7 @@ class LoadingGeomTester(LoadingTester):
         base_np_ar_2D = rows + cols
         base_np_ar = np.stack([base_np_ar_2D]*4, axis=0)
         self.ref_np_ar_area = (base_np_ar + np.arange(0, 4)[:, None, None]).astype(float)
-        xr_ar = xr.DataArray(data=self.ref_np_ar_area.astype(float),
+        xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, 10, 10)),
                              coords={'time': self.timestamps, 'x': xs, 'y': ys},
                              dims=['time', 'x', 'y'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
@@ -410,6 +425,7 @@ class LoadingGeomTester(LoadingTester):
         dc = self._create_loadable_dc(self.nc_filepaths)
         data = dc.load_by_geom(self.bbox, spatial_dim_name='tile_name', dtype='numpy')
         assert (self.ref_np_ar_area == data).all()
+        dc.close_ds()
 
     def test_load_nc2xarray_by_geom(self):
         """ Tests loading of an xarray array from NetCDF files by a bounding box. """
@@ -417,6 +433,7 @@ class LoadingGeomTester(LoadingTester):
         dc = self._create_loadable_dc(self.nc_filepaths)
         data = dc.load_by_geom(self.bbox, spatial_dim_name='tile_name', dtype='xarray', origin='c')
         assert self.ref_xr_ds_area.equals(data)
+        dc.close_ds()
 
     def test_load_nc2dataframe_by_geom(self):
         """ Tests loading of a Pandas data frame from NetCDF files by a bounding box. """
@@ -424,6 +441,7 @@ class LoadingGeomTester(LoadingTester):
         dc = self._create_loadable_dc(self.nc_filepaths)
         data = dc.load_by_geom(self.bbox, spatial_dim_name='tile_name', dtype='dataframe', origin='c')
         assert self.ref_pd_df_area.equals(data)
+        dc.close_ds()
 
     def test_load_singlenc2xarray_by_pixels(self):
         """ Tests loading of an xarray array from a multidimensional NetCDF file by a bounding box. """
@@ -432,6 +450,11 @@ class LoadingGeomTester(LoadingTester):
                         dimensions=['time'])
         data = dc.load_by_geom(self.bbox, band='SIG0', dtype='xarray', origin='c')
         assert self.ref_xr_ds_area.equals(data.rename({'SIG0': '1'}))
+        dc.close_ds()
 
 if __name__ == '__main__':
     unittest.main()
+    eodc_tester = LoadingCoordsTester()
+    eodc_tester.setUpClass()
+    eodc_tester.setUp()
+    eodc_tester.test_load_nc2xarray_by_coord()

@@ -665,7 +665,7 @@ class EODataCube(object):
             if spatial_dim_name not in self.dimensions:
                 raise DimensionUnkown(spatial_dim_name)
             this_sref = None
-            if sref is not None:
+            if sref is None:
                 this_sref = self.grid.core.projection.osr_spref
             tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
@@ -699,7 +699,7 @@ class EODataCube(object):
         xs = None
         ys = None
         if file_type == "GeoTIFF":
-            if self._ds is None or self.status != "stable":
+            if self._ds is None and self.status != "stable":
                 file_ts = {'filenames': list(self.filepaths)}
                 self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
             data = self.decode(self._ds.read_ts(min_row, min_col, col_size=col_size, row_size=row_size))
@@ -712,7 +712,7 @@ class EODataCube(object):
             xs, ys = inv_traffo_fun(np.arange(min_row, max_row).astype(float),
                                     np.arange(min_col, max_col).astype(float))
         elif file_type == "NetCDF":
-            if self._ds is None or self.status != "stable":
+            if self._ds is None and self.status != "stable":
                 file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
                 self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
             data = self.decode(self._ds.read()[band][:, min_row:max_row, min_col:max_col].to_dataset())
@@ -799,7 +799,7 @@ class EODataCube(object):
             col = cols[i]
 
             if file_type == "GeoTIFF":
-                if self._ds is None or self.status != "stable":
+                if self._ds is None and self.status != "stable":
                     file_ts = {'filenames': list(self.filepaths)}
                     self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
 
@@ -817,7 +817,7 @@ class EODataCube(object):
                 xs.append(xs_i)
                 ys.append(ys_i)
             elif file_type == "NetCDF":
-                if self._ds is None or self.status != "stable":
+                if self._ds is None and self.status != "stable":
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
                     self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
                 if row_size != 1 and col_size != 1:
@@ -881,7 +881,7 @@ class EODataCube(object):
             if spatial_dim_name not in self.dimensions:
                 raise DimensionUnkown(spatial_dim_name)
             this_sref = None
-            if sref is not None:
+            if sref is None:
                 this_sref = self.grid.core.projection.osr_spref
             tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
@@ -907,12 +907,12 @@ class EODataCube(object):
 
             file_type = get_file_type(self.filepaths[0])
             if file_type == "GeoTIFF":
-                if self._ds is None or self.status != "stable":
+                if self._ds is None and self.status != "stable":
                     file_ts = {'filenames': self.filepaths}
                     self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
                 data_i = self.decode(self._ds.read_ts(col, row))
             elif file_type == "NetCDF":
-                if self._ds is None or self.status != "stable":
+                if self._ds is None and self.status != "stable":
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
                     self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
                 data_i = self.decode(self._ds.read()[band][:, row:(row + 1), col:(col + 1)].to_dataset())  # +1 to keep the dimension

@@ -683,8 +683,8 @@ class EODataCube(object):
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
         min_row, min_col = xy2ij(extent[0], extent[3], this_gt)
         max_row, max_col = xy2ij(extent[2], extent[1], this_gt)
-        row_size = max_col - min_col
-        col_size = max_row - min_row
+        col_size = max_col - min_col
+        row_size = max_row - min_row
         if apply_mask:
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
             data_mask = np.ones((row_size, col_size))
@@ -709,8 +709,11 @@ class EODataCube(object):
             if apply_mask:
                 data = np.ma.array(data, mask=np.stack([data_mask]*data.shape[0], axis=0))
 
-            xs, ys = inv_traffo_fun(np.arange(min_row, max_row).astype(float),
-                                    np.arange(min_col, max_col).astype(float))
+            cols_traffo = np.concatenate(([min_col] * row_size, np.arange(min_col, max_col))).astype(float)
+            rows_traffo = np.concatenate((np.arange(min_row, max_row), [min_row] * col_size)).astype(float)
+            x_traffo, y_traffo = inv_traffo_fun(rows_traffo, cols_traffo)
+            xs = x_traffo[:row_size + 1]
+            ys = y_traffo[row_size:]
         elif file_type == "NetCDF":
             if self._ds is None and self.status != "stable":
                 file_ts = pd.DataFrame({'filenames': list(self.filepaths)})

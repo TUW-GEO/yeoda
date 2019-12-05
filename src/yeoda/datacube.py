@@ -47,11 +47,12 @@ import shapely.wkt
 from shapely.geometry import Point
 from geopandas import GeoSeries
 from geopandas import GeoDataFrame
+from geopandas.base import is_geometry_type
 import pytileproj.geometry as geometry
-from veranda.geotiff import GeoTiffFile
-from veranda.netcdf import NcFile
-from veranda.timestack import GeoTiffRasterTimeStack
-from veranda.timestack import NcRasterTimeStack
+from veranda.io.geotiff import GeoTiffFile
+from veranda.io.netcdf import NcFile
+from veranda.io.timestack import GeoTiffRasterTimeStack
+from veranda.io.timestack import NcRasterTimeStack
 
 # load yeoda's utils module
 from yeoda.utils import get_file_type
@@ -68,6 +69,8 @@ from yeoda.errors import FileTypeUnknown
 from yeoda.errors import DimensionUnkown
 from yeoda.errors import LoadingDataError
 from yeoda.errors import SpatialInconsistencyError
+
+# TODO: resolve geometry/tile columns and simplify queries
 
 
 def _check_inventory(f):
@@ -97,7 +100,25 @@ def _check_inventory(f):
     return f_wrapper
 
 
+# TODO: maybe use pandas isequal after function call to set this flag
 def _set_status(status):
+    """
+    Decorator for `EODataCube` functions to set internal flag defining if a process changes the data cube structure or
+    not.
+
+    Parameters
+    ----------
+    status: str
+        Flag defining the status of the data cube. It can be:
+            - "changed": a filtering process was executed, therefore the structure of the data cube has changed.
+            - "stable": the structure of the data cube is remains the same.
+
+    Returns
+    -------
+    function
+        Wrapper around `f`.
+    """
+
     def decorator(f):
         def f_wrapper(self, *args, **kwargs):
             ret_val = f(self, *args, **kwargs)
@@ -199,6 +220,28 @@ class EODataCube(object):
         else:
             return None
 
+    def boundary(self, spatial_dim_name='tile'):
+        """
+
+        Parameters
+        ----------
+        spatial_dim_name: str, optional
+            Name of the spatial dimension (default: 'tile').
+
+        Returns
+        -------
+        shapely.geometry
+            Shapely polygon representing the boundary of the data cube or `None` if no files are contained in the data
+            cube.
+        """
+
+        self.__check_spatial_consistency(spatial_dim_name=spatial_dim_name)
+        if self.filepaths is not None:
+            filepath = self.filepaths[0]
+            return self.__geometry_from_file(filepath)
+        else:
+            return None
+
     @classmethod
     def from_inventory(cls, inventory, grid=None):
         """
@@ -265,7 +308,11 @@ class EODataCube(object):
             `EODataCube` object with an additional dimension in the inventory.
         """
 
-        inventory = self.inventory.assign(**{name: GeoSeries(values, index=self.inventory.index)})
+        if is_geometry_type(values):
+            ds = GeoSeries(values, index=self.inventory.index)
+        else:
+            ds = pd.Series(values, index=self.inventory.index)
+        inventory = self.inventory.assign(**{name: ds})
         return self.__assign_inventory(inventory, in_place=in_place)
 
     @_set_status('changed')
@@ -405,33 +452,6 @@ class EODataCube(object):
 
         return self.__filter_by_dimension(values, expressions=expressions, name=name, in_place=in_place, split=False)
 
-    def split_by_dimension(self, values, expressions=None, name="time"):
-        """
-        Splits the data cube according to the given extents and returns a list of data cubes.
-
-        Parameters
-        ----------
-        values : list, tuple, list of tuples or list of lists
-            Values of interest to filter, e.g., timestamps: ('2019-01-01', '2019-02-01'), polarisations: ('VV')
-        expressions : list, tuple, list of tuples or list of lists, optional
-            Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
-            are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
-            They have to have the same length as 'values'. The following comparison operators are allowed:
-            - '==': equal to
-            - '>=': larger than or equal to
-            - '<=': smaller than or equal to
-            - '>':  larger than
-            - '<':  smaller than
-        name : str, optional
-            Name of the dimension.
-
-        Returns
-        -------
-        List of EODataCube objects.
-        """
-
-        return self.__filter_by_dimension(values, expressions=expressions, name=name, split=True)
-
     @_set_status('changed')
     def filter_spatially_by_tilename(self, tilenames, dimension_name="tile", in_place=False, use_grid=True):
         """
@@ -513,6 +533,33 @@ class EODataCube(object):
             return self.__assign_inventory(inventory, in_place=in_place)
         else:
             return self
+
+    def split_by_dimension(self, values, expressions=None, name="time"):
+        """
+        Splits the data cube according to the given extents and returns a list of data cubes.
+
+        Parameters
+        ----------
+        values : list, tuple, list of tuples or list of lists
+            Values of interest to filter, e.g., timestamps: ('2019-01-01', '2019-02-01'), polarisations: ('VV')
+        expressions : list, tuple, list of tuples or list of lists, optional
+            Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
+            are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
+            They have to have the same length as 'values'. The following comparison operators are allowed:
+            - '==': equal to
+            - '>=': larger than or equal to
+            - '<=': smaller than or equal to
+            - '>':  larger than
+            - '<':  smaller than
+        name : str, optional
+            Name of the dimension.
+
+        Returns
+        -------
+        List of EODataCube objects.
+        """
+
+        return self.__filter_by_dimension(values, expressions=expressions, name=name, split=True)
 
     def split_monthly(self, name='time', months=None):
         """
@@ -940,84 +987,6 @@ class EODataCube(object):
 
         return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
-    def __convert_dtype(self, data, dtype, xs=None, ys=None, temporal_dim_name='time', band=1):
-        """
-        Converts `data` into an array-like object defined by `dtype`. It supports NumPy arrays, Xarray arrays and
-        Pandas data frames.
-
-        Parameters
-        ----------
-        data : list of numpy.ndarray or list of xarray.DataSets or numpy.ndarray or xarray.DataArray
-        dtype : str
-            Data type of the returned array-like structure (default is 'xarray'). It can be:
-                - 'xarray': loads data as an xarray.DataSet
-                - 'numpy': loads data as a numpy.ndarray
-                - 'dataframe': loads data as a pandas.DataFrame
-        xs : list, optional
-            List of world system coordinates in X direction.
-        ys : list, optional
-            List of world system coordinates in Y direction.
-        temporal_dim_name : str, optional
-            Name of the temporal dimension (default: 'time').
-        band : int or str, optional
-            Band number or name (default is 1).
-
-        Returns
-        -------
-        list of numpy.ndarray or list of xarray.DataSets or pandas.DataFrame or numpy.ndarray or xarray.DataSet
-            Data as an array-like object.
-        """
-
-        if dtype == "xarray":
-            timestamps = self[temporal_dim_name]
-            if isinstance(data, list) and isinstance(data[0], np.ndarray):
-                ds = []
-                for i, entry in enumerate(data):
-                    x = xs[i]
-                    y = ys[i]
-                    if not isinstance(x, list):
-                        x = [x]
-                    if not isinstance(y, list):
-                        y = [y]
-                    xr_ar = xr.DataArray(entry, coords={'time': timestamps, 'x': x, 'y': y},
-                                         dims=['time', 'x', 'y'])
-                    ds.append(xr.Dataset(data_vars={band: xr_ar}))
-                converted_data = xr.merge(ds)
-            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
-                converted_data = xr.merge(data)
-                converted_data.attrs = data[0].attrs
-            elif isinstance(data, np.ndarray):
-                xr_ar = xr.DataArray(data, coords={'time': timestamps, 'x': xs, 'y': ys}, dims=['time', 'x', 'y'])
-                converted_data = xr.Dataset(data_vars={band: xr_ar})
-            elif isinstance(data, xr.Dataset):
-                converted_data = data
-            else:
-                raise DataTypeUnknown(type(data), dtype)
-        elif dtype == "numpy":
-            if isinstance(data, list) and isinstance(data[0], np.ndarray):
-                if len(data) == 1:
-                    converted_data = data[0]
-                else:
-                    converted_data = data
-            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
-                converted_data = [np.array(entry[band].data) for entry in data]
-                if len(converted_data) == 1:
-                    converted_data = converted_data[0]
-            elif isinstance(data, xr.Dataset):
-                converted_data = np.array(data[band].data)
-            elif isinstance(data, np.ndarray):
-                converted_data = data
-            else:
-                raise DataTypeUnknown(type(data), dtype)
-        elif dtype == "dataframe":
-            xr_ds = self.__convert_dtype(data, 'xarray', xs=xs, ys=ys, temporal_dim_name=temporal_dim_name,
-                                         band=band)
-            converted_data = xr_ds.to_dataframe()
-        else:
-            raise DataTypeUnknown(type(data), dtype)
-
-        return converted_data
-
     def encode(self, data):
         """
         Encodes an array.
@@ -1183,15 +1152,87 @@ class EODataCube(object):
         return geom
 
     def close(self):
+        """ Closes data set pointer. """
+
         self._ds.close()
 
-    def boundary(self, spatial_dim_name='tile'):
-        self.__check_spatial_consistency(spatial_dim_name=spatial_dim_name)
-        if self.filepaths is not None:
-            filepath = self.filepaths[0]
-            return self.__geometry_from_file(filepath)
+    def __convert_dtype(self, data, dtype, xs=None, ys=None, temporal_dim_name='time', band=1):
+        """
+        Converts `data` into an array-like object defined by `dtype`. It supports NumPy arrays, Xarray arrays and
+        Pandas data frames.
+
+        Parameters
+        ----------
+        data : list of numpy.ndarray or list of xarray.DataSets or numpy.ndarray or xarray.DataArray
+        dtype : str
+            Data type of the returned array-like structure (default is 'xarray'). It can be:
+                - 'xarray': loads data as an xarray.DataSet
+                - 'numpy': loads data as a numpy.ndarray
+                - 'dataframe': loads data as a pandas.DataFrame
+        xs : list, optional
+            List of world system coordinates in X direction.
+        ys : list, optional
+            List of world system coordinates in Y direction.
+        temporal_dim_name : str, optional
+            Name of the temporal dimension (default: 'time').
+        band : int or str, optional
+            Band number or name (default is 1).
+
+        Returns
+        -------
+        list of numpy.ndarray or list of xarray.DataSets or pandas.DataFrame or numpy.ndarray or xarray.DataSet
+            Data as an array-like object.
+        """
+
+        if dtype == "xarray":
+            timestamps = self[temporal_dim_name]
+            if isinstance(data, list) and isinstance(data[0], np.ndarray):
+                ds = []
+                for i, entry in enumerate(data):
+                    x = xs[i]
+                    y = ys[i]
+                    if not isinstance(x, list):
+                        x = [x]
+                    if not isinstance(y, list):
+                        y = [y]
+                    xr_ar = xr.DataArray(entry, coords={'time': timestamps, 'x': x, 'y': y},
+                                         dims=['time', 'x', 'y'])
+                    ds.append(xr.Dataset(data_vars={band: xr_ar}))
+                converted_data = xr.merge(ds)
+            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
+                converted_data = xr.merge(data)
+                converted_data.attrs = data[0].attrs
+            elif isinstance(data, np.ndarray):
+                xr_ar = xr.DataArray(data, coords={'time': timestamps, 'x': xs, 'y': ys}, dims=['time', 'x', 'y'])
+                converted_data = xr.Dataset(data_vars={band: xr_ar})
+            elif isinstance(data, xr.Dataset):
+                converted_data = data
+            else:
+                raise DataTypeUnknown(type(data), dtype)
+        elif dtype == "numpy":
+            if isinstance(data, list) and isinstance(data[0], np.ndarray):
+                if len(data) == 1:
+                    converted_data = data[0]
+                else:
+                    converted_data = data
+            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
+                converted_data = [np.array(entry[band].data) for entry in data]
+                if len(converted_data) == 1:
+                    converted_data = converted_data[0]
+            elif isinstance(data, xr.Dataset):
+                converted_data = np.array(data[band].data)
+            elif isinstance(data, np.ndarray):
+                converted_data = data
+            else:
+                raise DataTypeUnknown(type(data), dtype)
+        elif dtype == "dataframe":
+            xr_ds = self.__convert_dtype(data, 'xarray', xs=xs, ys=ys, temporal_dim_name=temporal_dim_name,
+                                         band=band)
+            converted_data = xr_ds.to_dataframe()
         else:
-            return None
+            raise DataTypeUnknown(type(data), dtype)
+
+        return converted_data
 
     def __get_georef(self):
         """
@@ -1269,6 +1310,16 @@ class EODataCube(object):
         return shapely.wkt.loads(boundary_geom.ExportToWkt())
 
     def __check_spatial_consistency(self, spatial_dim_name='tile'):
+        """
+        Checks if there are multiple tiles/file extents present in the data cube.
+        If so, a `SpatialInconsistencyError` is raised.
+
+        Parameters
+        ----------
+        spatial_dim_name: str, optional
+            Name of the spatial dimension (default: 'tile').
+        """
+
         if spatial_dim_name in self.dimensions:
             geoms = self[spatial_dim_name]
             try:  # try apply unique function to DataSeries
@@ -1280,7 +1331,6 @@ class EODataCube(object):
 
             if len(uni_vals) > 1:
                 raise SpatialInconsistencyError()
-        return
 
     def __inventory_from_filepaths(self, filepaths, dimensions=None, smart_filename_creator=None):
         """
@@ -1495,6 +1545,14 @@ class EODataCube(object):
         return len(self.inventory)
 
     def __repr__(self):
+        """
+        Defines the string representation of the class.
+
+        Returns
+        -------
+        str
+            String representation of a data cube, i.e. its inventory.
+        """
 
         return str(self.inventory)
 
@@ -1521,9 +1579,9 @@ def unite_datacubes(dcs):
     inventories = [dc.inventory for dc in dcs]
 
     # this is a SQL alike UNION operation
-    merged_inventory = pd.concat(inventories, ignore_index=True).drop_duplicates().reset_index(drop=True)
+    united_inventory = pd.concat(inventories, ignore_index=True, sort=False).drop_duplicates().reset_index(drop=True)
 
-    dc_merged = EODataCube.from_inventory(merged_inventory, grid=dcs[0].grid)
+    dc_merged = EODataCube.from_inventory(united_inventory, grid=dcs[0].grid)
 
     return dc_merged
 

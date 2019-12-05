@@ -42,8 +42,8 @@ from datetime import datetime
 
 # import veranda and Equi7Grid
 from equi7grid.equi7grid import Equi7Grid
-from veranda.geotiff import GeoTiffFile
-from veranda.netcdf import NcFile
+from veranda.io.geotiff import GeoTiffFile
+from veranda.io.netcdf import NcFile
 
 
 def dirpath_test():

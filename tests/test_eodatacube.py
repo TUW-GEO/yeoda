@@ -50,6 +50,7 @@ from yeoda.products.preprocessed import SIG0DataCube
 
 from yeoda.errors import SpatialInconsistencyError
 
+
 class EODataCubeTester(unittest.TestCase):
     """ Responsible for testing all the data cube operations and functionalities of a data cube. """
 
@@ -257,6 +258,8 @@ class EODataCubeTester(unittest.TestCase):
         assert (dc_1['time'] == dc_2['time']).all()
 
     def test_boundary_fail(self):
+        """ Tests exception triggering when multiple tiles are present in the data cube and a boundary is requested. """
+
         dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'])
         try:
             boundary = dc.boundary(spatial_dim_name="tile_name")
@@ -264,6 +267,8 @@ class EODataCubeTester(unittest.TestCase):
             assert True
 
     def test_boundary(self):
+        """ Tests equality of tile and data cube boundary. """
+
         dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
         dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", in_place=True)
         boundary = dc.boundary(spatial_dim_name="tile_name")
@@ -274,9 +279,4 @@ class EODataCubeTester(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-    #eodc_tester = EODataCubeTester()
-    #eodc_tester.setUpClass()
-    #eodc_tester.setUp()
-    #eodc_tester.test_boundary_fail()
-    #eodc_tester.test_boundary()
 

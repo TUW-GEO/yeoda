@@ -241,6 +241,7 @@ class LoadingPixelsTester(LoadingTester):
         self.col_size = 10
         x = 4323250.
         y = 1314750.
+        sres = 500.
 
         self.ref_np_ar = (np.array([[[self.row + self.col]*4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=self.ref_np_ar.astype(float),
@@ -250,12 +251,12 @@ class LoadingPixelsTester(LoadingTester):
         self.ref_pd_df = self.ref_xr_ds.to_dataframe()
         rows, cols = np.meshgrid(np.arange(self.row, self.row+self.row_size),
                                  np.arange(self.col, self.col+self.col_size))
-        xs = np.arange(x, x + self.row_size * 500, 500.)
-        ys = np.arange(y, y - self.col_size * 500, -500.)
+        xs = np.arange(x, x + self.row_size * sres, sres)
+        ys = np.arange(y, y - self.col_size * sres, -sres)
         base_np_ar_2D = rows + cols
         base_np_ar = np.stack([base_np_ar_2D]*4, axis=0)
         self.ref_np_ar_area = (base_np_ar + np.arange(0, 4)[:, None, None]).astype(float)
-        xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, 10, 10)),
+        xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, self.row_size, self.col_size)),
                              coords={'time': self.timestamps, 'x': xs, 'y': ys},
                              dims=['time', 'x', 'y'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
@@ -378,22 +379,32 @@ class LoadingGeomTester(LoadingTester):
         y = 1314750.
         row_size = 10
         col_size = 10
+        sres = 500.
+
+        # define bounding boxes
+        # general bounding box for reading data
         x_min = x
-        x_max = x + (col_size-1) * 500.
-        y_min = y - (row_size-1) * 500.
+        x_max = x + (col_size-1) * sres
+        y_min = y - (row_size-1) * sres
         y_max = y
         self.bbox = [(x_min, y_min), (x_max, y_max)]
-        self.partial_outside_bbox = [(4800000.0 - 10 * 500., 1200000.0 - 20*500),
-                                     (4800000.0 + 20*500, 1200000.0 + 10 * 500.)]
+        # defines bounding box being partially outside the tile (lower right corner)
+        x_lr = 4800000.0
+        y_lr = 1200000.0
+        x_min = x_lr - col_size*sres
+        x_max = x_lr + 2*col_size*sres
+        y_min = y_lr - 2*row_size*sres
+        y_max = y_lr + row_size*sres
+        self.partial_outside_bbox = [(x_min, y_min), (x_max, y_max)]
 
         rows, cols = np.meshgrid(np.arange(row, row+row_size),
                                  np.arange(col, col+col_size))
-        xs = np.arange(x, x + row_size * 500, 500.)
-        ys = np.arange(y, y - col_size * 500, -500.)
+        xs = np.arange(x, x + row_size * sres, sres)
+        ys = np.arange(y, y - col_size * sres, -sres)
         base_np_ar_2D = rows + cols
         base_np_ar = np.stack([base_np_ar_2D]*4, axis=0)
         self.ref_np_ar_area = (base_np_ar + np.arange(0, 4)[:, None, None]).astype(float)
-        xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, 10, 10)),
+        xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, row_size, col_size)),
                              coords={'time': self.timestamps, 'x': xs, 'y': ys},
                              dims=['time', 'x', 'y'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
@@ -456,14 +467,12 @@ class LoadingGeomTester(LoadingTester):
         dc.close()
 
     def test_load_geom_larger_than_tile(self):
+        """ Tests loading data when the region of interest is larger than the data cube extent. """
+
         dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
         dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", in_place=True)
         data = dc.load_by_geom(self.partial_outside_bbox, spatial_dim_name='tile_name', dtype='numpy')
         assert data.shape == (16, 10, 10)
 
 if __name__ == '__main__':
-    #unittest.main()
-    eodc_tester = LoadingGeomTester()
-    eodc_tester.setUpClass()
-    eodc_tester.setUp()
-    eodc_tester.test_load_gt2xarray_by_geom()
+    unittest.main()

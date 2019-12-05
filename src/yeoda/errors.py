@@ -189,3 +189,18 @@ class LoadingDataError(IOError):
         """ String representation of this class. """
 
         return self.message
+
+
+class SpatialInconsistencyError(IOError):
+    """ Class to handle exceptions thrown when data cube content is not congruent in space."""
+
+    def __init__(self):
+        """Constructor of `SpatialInconsistencyError`."""
+
+        self.message = "Data cube contains spatially inconsistent data. " \
+                       "Filter along the spatial/tile dimension to create a congruent data cube."
+
+    def __str__(self):
+        """ String representation of this class. """
+
+        return self.message

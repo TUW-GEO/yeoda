@@ -42,6 +42,7 @@ from collections import OrderedDict
 
 # geo packages
 from osgeo import osr
+from osgeo import ogr
 import shapely.wkt
 from shapely.geometry import Point
 from geopandas import GeoSeries
@@ -57,6 +58,7 @@ from yeoda.utils import get_file_type
 from yeoda.utils import any_geom2ogr_geom
 from yeoda.utils import xy2ij
 from yeoda.utils import ij2xy
+from yeoda.utils import boundary
 
 # load classes from yeoda's error module
 from yeoda.errors import IOClassNotFound
@@ -65,6 +67,7 @@ from yeoda.errors import TileNotAvailable
 from yeoda.errors import FileTypeUnknown
 from yeoda.errors import DimensionUnkown
 from yeoda.errors import LoadingDataError
+from yeoda.errors import SpatialInconsistencyError
 
 
 def _check_inventory(f):
@@ -679,6 +682,12 @@ class EODataCube(object):
         if sref is not None:
             geom_roi = geometry.transform_geometry(geom_roi, this_sref)
 
+        # clip region of interest to tile boundary
+        boundary_ogr = ogr.CreateGeometryFromWkt(self.boundary(spatial_dim_name=spatial_dim_name).wkt)
+        roi_sref = geom_roi.GetSpatialReference()
+        geom_roi = geom_roi.Intersection(boundary_ogr)
+        geom_roi.AssignSpatialReference(roi_sref)
+
         extent = geometry.get_geometry_envelope(geom_roi)
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
         min_row, min_col = xy2ij(extent[0], extent[3], this_gt)
@@ -712,7 +721,7 @@ class EODataCube(object):
             cols_traffo = np.concatenate(([min_col] * row_size, np.arange(min_col, max_col))).astype(float)
             rows_traffo = np.concatenate((np.arange(min_row, max_row), [min_row] * col_size)).astype(float)
             x_traffo, y_traffo = inv_traffo_fun(rows_traffo, cols_traffo)
-            xs = x_traffo[:row_size + 1]
+            xs = x_traffo[:row_size]
             ys = y_traffo[row_size:]
         elif file_type == "NetCDF":
             if self._ds is None and self.status != "stable":
@@ -811,10 +820,13 @@ class EODataCube(object):
                     raise LoadingDataError()
                 data.append(data_i)
                 if row_size != 1 and col_size != 1:
-                    xs_i, ys_i = inv_traffo_fun(np.arange(row, row + row_size).astype(float),
-                                                np.arange(col, col + col_size).astype(float))
-                    xs_i = xs_i.tolist()
-                    ys_i = ys_i.tolist()
+                    max_col = col + col_size
+                    max_row = row + row_size
+                    cols_traffo = np.concatenate(([col] * row_size, np.arange(col, max_col))).astype(float)
+                    rows_traffo = np.concatenate((np.arange(row, max_row), [row] * col_size)).astype(float)
+                    x_traffo, y_traffo = inv_traffo_fun(rows_traffo, cols_traffo)
+                    xs_i = x_traffo[:row_size].tolist()
+                    ys_i = y_traffo[row_size:].tolist()
                 else:
                     xs_i, ys_i = inv_traffo_fun(row, col)
                 xs.append(xs_i)
@@ -1170,8 +1182,16 @@ class EODataCube(object):
 
         return geom
 
-    def close_ds(self):
+    def close(self):
         self._ds.close()
+
+    def boundary(self, spatial_dim_name='tile'):
+        self.__check_spatial_consistency(spatial_dim_name=spatial_dim_name)
+        if self.filepaths is not None:
+            filepath = self.filepaths[0]
+            return self.__geometry_from_file(filepath)
+        else:
+            return None
 
     def __get_georef(self):
         """
@@ -1242,16 +1262,25 @@ class EODataCube(object):
         file_type = get_file_type(filepath)
         io_class = self.__io_class(file_type)
         io_instance = io_class(filepath, mode='r')
-        gt = io_instance.geotransform
-        boundary_extent = (gt[0], gt[3] + io_instance.shape[0] * gt[5], gt[0] + io_instance.shape[1] * gt[1], gt[3])
-        boundary_spref = osr.SpatialReference()
-        boundary_spref.ImportFromWkt(io_instance.spatialref)
-        bbox = [(boundary_extent[0], boundary_extent[1]), (boundary_extent[2], boundary_extent[3])]
-        boundary_geom = geometry.bbox2polygon(bbox, boundary_spref)
+        boundary_geom = boundary(io_instance.geotransform, io_instance.spatialref, io_instance.shape)
         # close data set
         io_instance.close()
 
         return shapely.wkt.loads(boundary_geom.ExportToWkt())
+
+    def __check_spatial_consistency(self, spatial_dim_name='tile'):
+        if spatial_dim_name in self.dimensions:
+            geoms = self[spatial_dim_name]
+            try:  # try apply unique function to DataSeries
+                uni_vals = geoms.unique()
+            except:
+                # the type seems not to be hashable, it could contain shapely geometries.
+                # try to convert them to strings and then apply a unique function
+                uni_vals = geoms.apply(lambda x: x.wkt).unique()
+
+            if len(uni_vals) > 1:
+                raise SpatialInconsistencyError()
+        return
 
     def __inventory_from_filepaths(self, filepaths, dimensions=None, smart_filename_creator=None):
         """
@@ -1464,6 +1493,10 @@ class EODataCube(object):
         """
 
         return len(self.inventory)
+
+    def __repr__(self):
+
+        return str(self.inventory)
 
 
 def unite_datacubes(dcs):

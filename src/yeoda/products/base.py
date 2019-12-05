@@ -77,8 +77,8 @@ class ProductDataCube(EODataCube):
         else:
             dir_tree = kwargs.get('dir_tree', None)
 
-        filepaths = None
-        if dir_tree is not None:
+        filepaths = kwargs.get('filepaths', None)
+        if filepaths is None and dir_tree is not None:
             filepaths = dir_tree.file_register
 
         inventory = kwargs.get('inventory', None)

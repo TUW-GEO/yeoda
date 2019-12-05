@@ -33,6 +33,7 @@ Main code for testing general functionalities of a data cube.
 
 # general imports
 import os
+import ogr
 import shutil
 import unittest
 import numpy as np
@@ -40,11 +41,14 @@ import numpy as np
 from tests.setup_test_data import setup_gt_test_data
 from tests.setup_test_data import dirpath_test
 
+from equi7grid.equi7grid import Equi7Grid
 from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
 
 # import yeoda
 from yeoda.datacube import EODataCube
+from yeoda.products.preprocessed import SIG0DataCube
 
+from yeoda.errors import SpatialInconsistencyError
 
 class EODataCubeTester(unittest.TestCase):
     """ Responsible for testing all the data cube operations and functionalities of a data cube. """
@@ -252,6 +256,27 @@ class EODataCubeTester(unittest.TestCase):
         dc_1.align_dimension(dc_2, name='time', in_place=True)
         assert (dc_1['time'] == dc_2['time']).all()
 
+    def test_boundary_fail(self):
+        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'])
+        try:
+            boundary = dc.boundary(spatial_dim_name="tile_name")
+        except SpatialInconsistencyError:
+            assert True
+
+    def test_boundary(self):
+        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
+        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", in_place=True)
+        boundary = dc.boundary(spatial_dim_name="tile_name")
+        equi7 = Equi7Grid(500)
+        tile_oi = equi7.EU.tilesys.create_tile(name="E042N012T6")
+        assert ogr.CreateGeometryFromWkt(boundary.wkt).ExportToWkt() == tile_oi.get_extent_geometry_proj().ConvexHull().ExportToWkt()
+
+
 if __name__ == '__main__':
     unittest.main()
+    #eodc_tester = EODataCubeTester()
+    #eodc_tester.setUpClass()
+    #eodc_tester.setUp()
+    #eodc_tester.test_boundary_fail()
+    #eodc_tester.test_boundary()
 

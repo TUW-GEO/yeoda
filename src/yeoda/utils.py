@@ -36,6 +36,7 @@ import os
 
 # geo packages
 import ogr
+import osr
 import pytileproj.geometry as geometry
 import shapely.geometry
 
@@ -195,6 +196,15 @@ def ij2xy(i, j, gt, origin="ul"):
 
     return x, y
 
+
+def boundary(gt, sref, shape):
+    boundary_extent = (gt[0], gt[3] + shape[0] * gt[5], gt[0] + shape[1] * gt[1], gt[3])
+    boundary_spref = osr.SpatialReference()
+    boundary_spref.ImportFromWkt(sref)
+    bbox = [(boundary_extent[0], boundary_extent[1]), (boundary_extent[2], boundary_extent[3])]
+    boundary_geom = geometry.bbox2polygon(bbox, boundary_spref)
+
+    return boundary_geom
 
 if __name__ == '__main__':
     pass

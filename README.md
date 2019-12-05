@@ -11,8 +11,7 @@
 
 ## Description
 *yeoda* stands for **y**our **e**arth **o**bservation **d**ata **a**ccess and provides lower and higher-level data cube 
-classes to work with well-defined and structured earth observation data. These data cubes allow to filter, split and load data independently from the way the data is structured on the hard disk.  
-Once the data structure is known to *yeoda*, it offers a user-friendly interface to access the data with the aforementioned operations.
+classes to work with well-defined and structured earth observation data. These data cubes allow to filter, split and load data independently from the way the data is structured on the hard disk. Once the data structure is known to *yeoda*, it offers a user-friendly interface to access the data with the aforementioned operations.
 Internally, the package relies on functionalities provided by [*geopathfinder*](https://github.com/TUW-GEO/geopathfinder) 
 (filepath/filename and folder structure handling library), [*veranda*](https://github.com/TUW-GEO/veranda) (IO classes and higher-level data structure classes for vector and raster data)
 and [*geospade*](https://github.com/TUW-GEO/geospade) (raster and vector geometry definitions and operations).
@@ -80,3 +79,16 @@ If you want to contribute please follow these steps:
   * Please include tests for your contributions in one of the test directories.
     We use *py.test* so a simple function called ``test_my_feature`` is enough
   * Submit a pull request to our master branch
+  
+## Citation
+
+[![DOI](https://zenodo.org/badge/186986862.svg)](https://zenodo.org/badge/latestdoi/186986862)
+
+If you use this software in a publication then please cite it using the Zenodo DOI.
+Be aware that this badge links to the latest package version.
+
+Please select your specific version at <https://doi.org/10.5281/zenodo.3540693> (link to first release) to get the DOI of that version.
+You should normally always use the DOI for the specific version of your record in citations.
+This is to ensure that other researchers can access the exact research artefact you used for reproducibility.
+
+You can find additional information regarding DOI versioning at <http://help.zenodo.org/#versioning>.

@@ -9,6 +9,7 @@ Version 0.1.3
 - Keep data set pointer
 - Added clipping and limit reading to tile/file boundaries
 - Removed 'geometry' as default dimension
+- Removed bugs
 
 Version 0.1.2
 =============

@@ -42,8 +42,8 @@ from datetime import datetime
 
 # import veranda and Equi7Grid
 from equi7grid.equi7grid import Equi7Grid
-from veranda.geotiff import GeoTiffFile
-from veranda.netcdf import NcFile
+from veranda.io.geotiff import GeoTiffFile
+from veranda.io.netcdf import NcFile
 
 
 def dirpath_test():
@@ -79,7 +79,7 @@ def setup_gt_test_data():
     filename_fmt = "D{}_000000--_{}-----_S1AIWGRDH1{}{}_146_T0101_EU500M_{}.tif"
     combs = itertools.product(var_names, pols, directions, timestamps, tilenames)
 
-    rows, cols = np.meshgrid(np.arange(0, 1600), np.arange(0, 1600))
+    rows, cols = np.meshgrid(np.arange(0, 1200), np.arange(0, 1200))
     data = (rows + cols).astype(float)
     equi7 = Equi7Grid(500)
 
@@ -143,7 +143,7 @@ def setup_nc_multi_test_data():
     filename_fmt = "D{}_000000--_SIG0-----_S1AIWGRDH1{}{}_146_T0101_EU500M_E042N012T6.nc"
     combs = itertools.product(pols, directions, timestamps)
 
-    rows, cols = np.meshgrid(np.arange(0, 1600), np.arange(0, 1600))
+    rows, cols = np.meshgrid(np.arange(0, 1200), np.arange(0, 1200))
     data = (rows + cols).astype(float)
     equi7 = Equi7Grid(500)
     tile_oi = equi7.EU.tilesys.create_tile(name="E042N012T6")
@@ -200,7 +200,7 @@ def setup_nc_single_test_data():
     directions = ["A", "D"]
     combs = itertools.product(var_names, directions, timestamps)
 
-    rows, cols = np.meshgrid(np.arange(0, 1600), np.arange(0, 1600))
+    rows, cols = np.meshgrid(np.arange(0, 1200), np.arange(0, 1200))
     data = rows + cols
     equi7 = Equi7Grid(500)
     tile_oi = equi7.EU.tilesys.create_tile(name="E042N012T6")

@@ -205,7 +205,7 @@ If you want to intersect them along a dimension, i.e. to only keep common dimens
 
    dc_1 = ...  # initialise first data cube
    dc_2 = ...  # initialise second data cube
-   dc_united = dc_1.intersect(dc_2, on_dimension='time')
+   dc_intersected = dc_1.intersect(dc_2, on_dimension='time')
 
 Alignment
 ---------
@@ -218,7 +218,7 @@ This also means that data cube entries are duplicated if they appear more often 
    dc_1 = ...  # initialise first data cube
    dc_2 = ...  # initialise second data cube
    name = "time"
-   dc_united = dc_1.align_dimension(dc_2, name)
+   dc_aligned = dc_1.align_dimension(dc_2, name)
 
 .. _dc_load:
 

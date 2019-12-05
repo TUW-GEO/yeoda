@@ -42,20 +42,24 @@ from collections import OrderedDict
 
 # geo packages
 from osgeo import osr
+from osgeo import ogr
 import shapely.wkt
 from shapely.geometry import Point
 from geopandas import GeoSeries
 from geopandas import GeoDataFrame
+from geopandas.base import is_geometry_type
 import pytileproj.geometry as geometry
-from veranda.geotiff import GeoTiffFile
-from veranda.netcdf import NcFile
-from veranda.timestack import GeoTiffRasterTimeStack
+from veranda.io.geotiff import GeoTiffFile
+from veranda.io.netcdf import NcFile
+from veranda.io.timestack import GeoTiffRasterTimeStack
+from veranda.io.timestack import NcRasterTimeStack
 
 # load yeoda's utils module
 from yeoda.utils import get_file_type
 from yeoda.utils import any_geom2ogr_geom
 from yeoda.utils import xy2ij
 from yeoda.utils import ij2xy
+from yeoda.utils import boundary
 
 # load classes from yeoda's error module
 from yeoda.errors import IOClassNotFound
@@ -64,6 +68,9 @@ from yeoda.errors import TileNotAvailable
 from yeoda.errors import FileTypeUnknown
 from yeoda.errors import DimensionUnkown
 from yeoda.errors import LoadingDataError
+from yeoda.errors import SpatialInconsistencyError
+
+# TODO: resolve geometry/tile columns and simplify queries
 
 
 def _check_inventory(f):
@@ -91,6 +98,36 @@ def _check_inventory(f):
             else:
                 return self
     return f_wrapper
+
+
+# TODO: maybe use pandas isequal after function call to set this flag
+def _set_status(status):
+    """
+    Decorator for `EODataCube` functions to set internal flag defining if a process changes the data cube structure or
+    not.
+
+    Parameters
+    ----------
+    status: str
+        Flag defining the status of the data cube. It can be:
+            - "changed": a filtering process was executed, therefore the structure of the data cube has changed.
+            - "stable": the structure of the data cube is remains the same.
+
+    Returns
+    -------
+    function
+        Wrapper around `f`.
+    """
+
+    def decorator(f):
+        def f_wrapper(self, *args, **kwargs):
+            ret_val = f(self, *args, **kwargs)
+            in_place = kwargs.get('in_place', None)
+            if in_place:
+                self.status = status
+            return ret_val
+        return f_wrapper
+    return decorator
 
 
 class EODataCube(object):
@@ -124,6 +161,8 @@ class EODataCube(object):
 
         # initialise simple class variables
         self.smart_filename_creator = smart_filename_creator
+        self._ds = None  # data set pointer
+        self.status = None
 
         # initialise IO classes responsible for reading and writing
         if io_map is not None:
@@ -139,10 +178,11 @@ class EODataCube(object):
             self.__inventory_from_filepaths(filepaths, dimensions=dimensions,
                                             smart_filename_creator=smart_filename_creator)
 
+        dimensions = [] if dimensions is None else dimensions
         self.grid = None
         if grid:
             self.grid = grid
-        elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()):
+        elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()) and ('geometry' in dimensions):
             geometries = [self.__geometry_from_file(filepath) for filepath in self.filepaths]
             self.add_dimension('geometry', geometries, in_place=True)
 
@@ -177,6 +217,28 @@ class EODataCube(object):
             if 'filepath' in dimensions:
                 dimensions.remove('filepath')
             return dimensions
+        else:
+            return None
+
+    def boundary(self, spatial_dim_name='tile'):
+        """
+
+        Parameters
+        ----------
+        spatial_dim_name: str, optional
+            Name of the spatial dimension (default: 'tile').
+
+        Returns
+        -------
+        shapely.geometry
+            Shapely polygon representing the boundary of the data cube or `None` if no files are contained in the data
+            cube.
+        """
+
+        self.__check_spatial_consistency(spatial_dim_name=spatial_dim_name)
+        if self.filepaths is not None:
+            filepath = self.filepaths[0]
+            return self.__geometry_from_file(filepath)
         else:
             return None
 
@@ -246,9 +308,14 @@ class EODataCube(object):
             `EODataCube` object with an additional dimension in the inventory.
         """
 
-        inventory = self.inventory.assign(**{name: GeoSeries(values, index=self.inventory.index)})
+        if is_geometry_type(values):
+            ds = GeoSeries(values, index=self.inventory.index)
+        else:
+            ds = pd.Series(values, index=self.inventory.index)
+        inventory = self.inventory.assign(**{name: ds})
         return self.__assign_inventory(inventory, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def filter_files_with_pattern(self, pattern, full_path=False, in_place=False):
         """
@@ -280,6 +347,7 @@ class EODataCube(object):
         inventory = self.inventory[idx_filter]
         return self.__assign_inventory(inventory, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def filter_by_metadata(self, metadata, in_place=False):
         """
@@ -321,6 +389,7 @@ class EODataCube(object):
         inventory = self.inventory[bool_filter]
         return self.__assign_inventory(inventory, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def sort_by_dimension(self, name, ascending=True, in_place=False):
         """
@@ -351,6 +420,7 @@ class EODataCube(object):
         else:
             return self.from_inventory(inventory=inventory_sorted, grid=self.grid)
 
+    @_set_status('changed')
     def filter_by_dimension(self, values, expressions=None, name="time", in_place=False):
         """
         Filters the data cube according to the given extents and returns a (new) data cube.
@@ -382,33 +452,7 @@ class EODataCube(object):
 
         return self.__filter_by_dimension(values, expressions=expressions, name=name, in_place=in_place, split=False)
 
-    def split_by_dimension(self, values, expressions=None, name="time"):
-        """
-        Splits the data cube according to the given extents and returns a list of data cubes.
-
-        Parameters
-        ----------
-        values : list, tuple, list of tuples or list of lists
-            Values of interest to filter, e.g., timestamps: ('2019-01-01', '2019-02-01'), polarisations: ('VV')
-        expressions : list, tuple, list of tuples or list of lists, optional
-            Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
-            are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
-            They have to have the same length as 'values'. The following comparison operators are allowed:
-            - '==': equal to
-            - '>=': larger than or equal to
-            - '<=': smaller than or equal to
-            - '>':  larger than
-            - '<':  smaller than
-        name : str, optional
-            Name of the dimension.
-
-        Returns
-        -------
-        List of EODataCube objects.
-        """
-
-        return self.__filter_by_dimension(values, expressions=expressions, name=name, split=True)
-
+    @_set_status('changed')
     def filter_spatially_by_tilename(self, tilenames, dimension_name="tile", in_place=False, use_grid=True):
         """
         Spatially filters the data cube by tile names.
@@ -448,6 +492,7 @@ class EODataCube(object):
         else:
             return self.filter_by_dimension(tilenames, name=dimension_name, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def filter_spatially_by_geom(self, geom, sref=None, dimension_name="tile", in_place=False):
         """
@@ -478,14 +523,43 @@ class EODataCube(object):
         if self.grid:
             ftilenames = self.grid.search_tiles_over_geometry(geom_roi)
             tilenames = [ftilename.split('_')[1] for ftilename in ftilenames]
-            self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, in_place=in_place,
-                                              use_grid=False)
+            return self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, in_place=in_place,
+                                                     use_grid=False)
         elif 'geometry' in self.inventory.keys():
             # get spatial reference of data
             geom_roi = self.align_geom(geom_roi)
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
             inventory = self.inventory[self.inventory.intersects(geom_roi)]
             return self.__assign_inventory(inventory, in_place=in_place)
+        else:
+            return self
+
+    def split_by_dimension(self, values, expressions=None, name="time"):
+        """
+        Splits the data cube according to the given extents and returns a list of data cubes.
+
+        Parameters
+        ----------
+        values : list, tuple, list of tuples or list of lists
+            Values of interest to filter, e.g., timestamps: ('2019-01-01', '2019-02-01'), polarisations: ('VV')
+        expressions : list, tuple, list of tuples or list of lists, optional
+            Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
+            are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
+            They have to have the same length as 'values'. The following comparison operators are allowed:
+            - '==': equal to
+            - '>=': larger than or equal to
+            - '<=': smaller than or equal to
+            - '>':  larger than
+            - '<':  smaller than
+        name : str, optional
+            Name of the dimension.
+
+        Returns
+        -------
+        List of EODataCube objects.
+        """
+
+        return self.__filter_by_dimension(values, expressions=expressions, name=name, split=True)
 
     def split_monthly(self, name='time', months=None):
         """
@@ -592,8 +666,9 @@ class EODataCube(object):
 
         return self.split_by_dimension(values, expressions, name=name)
 
-    def load_by_geom(self, geom, sref=None, dimension_name="tile", band='1', apply_mask=False, dtype="xarray",
-                     origin='c'):
+    @_set_status('stable')
+    def load_by_geom(self, geom, sref=None, band='1', spatial_dim_name="tile", temporal_dim_name="time",
+                     apply_mask=False, dtype="xarray", origin='ur'):
         """
         Loads data according to a given geometry.
 
@@ -607,8 +682,10 @@ class EODataCube(object):
             Spatial reference of the given region of interest `geom`.
         band : int or str, optional
             Band number or name (default is 1).
-        dimension_name : str, optional
+        spatial_dim_name : str, optional
             Name of the spatial dimension (default: 'tile').
+        temporal_dim_name : str, optional
+            Name of the temporal dimension (default: 'time').
         apply_mask : bool, optional
             If true, a numpy mask array with a mask excluding (=1) all pixels outside `geom` (=0) will be created
             (default is True).
@@ -635,12 +712,12 @@ class EODataCube(object):
             return None
 
         if self.grid:
-            if dimension_name not in self.dimensions:
-                raise DimensionUnkown(dimension_name)
+            if spatial_dim_name not in self.dimensions:
+                raise DimensionUnkown(spatial_dim_name)
             this_sref = None
-            if sref is not None:
+            if sref is None:
                 this_sref = self.grid.core.projection.osr_spref
-            tilenames = list(self.inventory[dimension_name])
+            tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
@@ -652,12 +729,18 @@ class EODataCube(object):
         if sref is not None:
             geom_roi = geometry.transform_geometry(geom_roi, this_sref)
 
+        # clip region of interest to tile boundary
+        boundary_ogr = ogr.CreateGeometryFromWkt(self.boundary(spatial_dim_name=spatial_dim_name).wkt)
+        roi_sref = geom_roi.GetSpatialReference()
+        geom_roi = geom_roi.Intersection(boundary_ogr)
+        geom_roi.AssignSpatialReference(roi_sref)
+
         extent = geometry.get_geometry_envelope(geom_roi)
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
         min_row, min_col = xy2ij(extent[0], extent[3], this_gt)
         max_row, max_col = xy2ij(extent[2], extent[1], this_gt)
-        row_size = max_col - min_col
-        col_size = max_row - min_row
+        col_size = max_col - min_col
+        row_size = max_row - min_row
         if apply_mask:
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
             data_mask = np.ones((row_size, col_size))
@@ -672,46 +755,39 @@ class EODataCube(object):
         xs = None
         ys = None
         if file_type == "GeoTIFF":
-            file_ts = {'filenames': list(self.filepaths)}
-            gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-            data = self.decode(gt_timestack.read_ts(min_row, min_col, col_size=col_size, row_size=row_size))
+            if self._ds is None and self.status != "stable":
+                file_ts = {'filenames': list(self.filepaths)}
+                self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
+            data = self.decode(self._ds.read_ts(min_row, min_col, col_size=col_size, row_size=row_size))
             if data is None:
                 raise LoadingDataError()
 
             if apply_mask:
                 data = np.ma.array(data, mask=np.stack([data_mask]*data.shape[0], axis=0))
 
-            xs, ys = inv_traffo_fun(np.arange(min_row, max_row).astype(float),
-                                    np.arange(min_col, max_col).astype(float))
+            cols_traffo = np.concatenate(([min_col] * row_size, np.arange(min_col, max_col))).astype(float)
+            rows_traffo = np.concatenate((np.arange(min_row, max_row), [min_row] * col_size)).astype(float)
+            x_traffo, y_traffo = inv_traffo_fun(rows_traffo, cols_traffo)
+            xs = x_traffo[:row_size]
+            ys = y_traffo[row_size:]
         elif file_type == "NetCDF":
-            xr_dss = []
-            attrs = None
-            for filepath in self.filepaths:
-                nc_file = NcFile(filepath, mode='r')
-                xr_ds = nc_file.read()
-                if xr_ds is None:
-                    raise LoadingDataError()
-                attrs = xr_ds.attrs
-                xr_ar = self.decode(xr_ds[band][:, min_row:max_row, min_col:max_col])
-                # redeclare coordinates as dimensions:
-                for dim in list(xr_ds.dims.keys()):
-                    if dim not in xr_ar.dims:
-                        axis = len(xr_ar.dims)
-                        xr_ar = xr_ar.expand_dims(dim, axis=axis)
-                xr_dss.append(xr.Dataset({band: xr_ar}))
-            data = xr.merge(xr_dss)  # assumes data has only one timestamp
-            if attrs is not None:
-                data.attrs = attrs
+            if self._ds is None and self.status != "stable":
+                file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
+                self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+            data = self.decode(self._ds.read()[band][:, min_row:max_row, min_col:max_col].to_dataset())
+            if data is None:
+                raise LoadingDataError()
 
             if apply_mask:
                 data.data = np.ma.array(data.data, mask=np.stack([data_mask] * data.data.shape[0], axis=0))
         else:
             raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
+        return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
-    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', dimension_name="tile", dtype="xarray",
-                       origin="ur"):
+    @_set_status('stable')
+    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', spatial_dim_name="tile",
+                       temporal_dim_name="time", dtype="xarray", origin="ur"):
         """
         Loads data according to given pixel numbers, i.e. the row and column numbers and optionally a certain
         pixel window (`row_size` and `col_size`).
@@ -728,8 +804,10 @@ class EODataCube(object):
             Number of columns to read (counts from input argument `cols`, default is 1).
         band : int or str, optional
             Band number or name (default is 1).
-        dimension_name : str, optional
+        spatial_dim_name : str, optional
             Name of the spatial dimension (default: 'tile').
+        temporal_dim_name : str, optional
+            Name of the temporal dimension (default: 'time').
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
@@ -758,9 +836,9 @@ class EODataCube(object):
             cols = [cols]
 
         if self.grid:
-            if dimension_name not in self.dimensions:
-                raise DimensionUnkown(dimension_name)
-            tilenames = list(self.inventory[dimension_name])
+            if spatial_dim_name not in self.dimensions:
+                raise DimensionUnkown(spatial_dim_name)
+            tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
@@ -780,50 +858,43 @@ class EODataCube(object):
             col = cols[i]
 
             if file_type == "GeoTIFF":
-                file_ts = {'filenames': list(self.filepaths)}
-                gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-                data_i = self.decode(gt_timestack.read_ts(col, row, col_size=col_size, row_size=row_size))
+                if self._ds is None and self.status != "stable":
+                    file_ts = {'filenames': list(self.filepaths)}
+                    self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
+
+                data_i = self.decode(self._ds.read_ts(col, row, col_size=col_size, row_size=row_size))
                 if data_i is None:
                     raise LoadingDataError()
                 data.append(data_i)
                 if row_size != 1 and col_size != 1:
-                    xs_i, ys_i = inv_traffo_fun(np.arange(row, row + row_size).astype(float),
-                                                np.arange(col, col + col_size).astype(float))
-                    xs_i = xs_i.tolist()
-                    ys_i = ys_i.tolist()
+                    max_col = col + col_size
+                    max_row = row + row_size
+                    cols_traffo = np.concatenate(([col] * row_size, np.arange(col, max_col))).astype(float)
+                    rows_traffo = np.concatenate((np.arange(row, max_row), [row] * col_size)).astype(float)
+                    x_traffo, y_traffo = inv_traffo_fun(rows_traffo, cols_traffo)
+                    xs_i = x_traffo[:row_size].tolist()
+                    ys_i = y_traffo[row_size:].tolist()
                 else:
                     xs_i, ys_i = inv_traffo_fun(row, col)
                 xs.append(xs_i)
                 ys.append(ys_i)
             elif file_type == "NetCDF":
-                xr_dss = []
-                attrs = None
-                for filepath in self.filepaths:
-                    nc_file = NcFile(filepath, mode='r')
-                    xr_ds = nc_file.read()
-                    if xr_ds is None:
-                        raise LoadingDataError()
-                    attrs = xr_ds.attrs
-                    if row_size != 1 and col_size != 1:
-                        xr_ar = self.decode(xr_ds[band][:, row:(row + row_size), col:(col + col_size)])
-                    else:
-                        xr_ar = self.decode(xr_ds[band][:, row, col])
-                    # redeclare coordinates as dimensions:
-                    for dim in list(xr_ds.dims.keys()):
-                        if dim not in xr_ar.dims:
-                            axis = len(xr_ar.dims)
-                            xr_ar = xr_ar.expand_dims(dim, axis=axis)
-                    xr_dss.append(xr.Dataset({band: xr_ar}))
-                xr_data = xr.merge(xr_dss)  # assumes data has only one timestamp
-                if attrs is not None:
-                    xr_data.attrs = attrs
-                data.append(xr_data)
+                if self._ds is None and self.status != "stable":
+                    file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
+                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+                if row_size != 1 and col_size != 1:
+                    data_i = self.decode(self._ds.read()[band][:, row:(row + row_size), col:(col + col_size)].to_dataset())
+                else:
+                    data_i = self.decode(self._ds.read()[band][:, row:(row + 1), col:(col + 1)].to_dataset())  # +1 to keep the dimension
+                data.append(data_i)
             else:
                 raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
-    def load_by_coords(self, xs, ys, sref=None, band='1', dimension_name="tile", dtype="xarray", origin="ur"):
+    @_set_status('stable')
+    def load_by_coords(self, xs, ys, sref=None, band='1', spatial_dim_name="tile", temporal_dim_name="time",
+                       dtype="xarray", origin="ur"):
         """
         Loads data as a 1-D array according to a given coordinate.
 
@@ -837,8 +908,10 @@ class EODataCube(object):
             Spatial reference referring to the world system coordinates `x` and `y`.
         band : int or str, optional
             Band number or name (default is 1).
-        dimension_name : str, optional
+        spatial_dim_name : str, optional
             Name of the spatial dimension (default: 'tile').
+        temporal_dim_name : str, optional
+            Name of the temporal dimension (default: 'time').
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
@@ -867,12 +940,12 @@ class EODataCube(object):
             ys = [ys]
 
         if self.grid is not None:
-            if dimension_name not in self.dimensions:
-                raise DimensionUnkown(dimension_name)
+            if spatial_dim_name not in self.dimensions:
+                raise DimensionUnkown(spatial_dim_name)
             this_sref = None
-            if sref is not None:
+            if sref is None:
                 this_sref = self.grid.core.projection.osr_spref
-            tilenames = list(self.inventory[dimension_name])
+            tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
@@ -896,115 +969,23 @@ class EODataCube(object):
 
             file_type = get_file_type(self.filepaths[0])
             if file_type == "GeoTIFF":
-                file_ts = {'filenames': self.filepaths}
-                gt_timestack = GeoTiffRasterTimeStack(file_ts=file_ts)
-                data_i = self.decode(gt_timestack.read_ts(col, row))
-                if data_i is None:
-                    raise LoadingDataError()
-                data.append(data_i)
+                if self._ds is None and self.status != "stable":
+                    file_ts = {'filenames': self.filepaths}
+                    self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
+                data_i = self.decode(self._ds.read_ts(col, row))
             elif file_type == "NetCDF":
-                xr_dss = []
-                attrs = None
-                for filepath in self.filepaths:
-                    nc_file = NcFile(filepath, mode='r')
-                    xr_ds = nc_file.read()
-                    if xr_ds is None:
-                        raise LoadingDataError()
-                    attrs = xr_ds.attrs
-                    xr_ar = self.decode(xr_ds[band][:, row, col])
-                    # redeclare coordinates as dimensions:
-                    for dim in list(xr_ds.dims.keys()):
-                        if dim not in xr_ar.dims:
-                            axis = len(xr_ar.dims)
-                            xr_ar = xr_ar.expand_dims(dim, axis=axis)
-                    xr_dss.append(xr.Dataset({band: xr_ar}))
-                xr_data = xr.merge(xr_dss)  # assumes data has only one timestamp
-                if attrs is not None:
-                    xr_data.attrs = attrs
-                data.append(xr_data)
+                if self._ds is None and self.status != "stable":
+                    file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
+                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+                data_i = self.decode(self._ds.read()[band][:, row:(row + 1), col:(col + 1)].to_dataset())  # +1 to keep the dimension
             else:
                 raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
+            if data_i is None:
+                raise LoadingDataError()
+            data.append(data_i)
 
-    def __convert_dtype(self, data, dtype, xs=None, ys=None, temporal_dim_name='time', band=1):
-        """
-        Converts `data` into an array-like object defined by `dtype`. It supports NumPy arrays, Xarray arrays and
-        Pandas data frames.
-
-        Parameters
-        ----------
-        data : list of numpy.ndarray or list of xarray.DataSets or numpy.ndarray or xarray.DataArray
-        dtype : str
-            Data type of the returned array-like structure (default is 'xarray'). It can be:
-                - 'xarray': loads data as an xarray.DataSet
-                - 'numpy': loads data as a numpy.ndarray
-                - 'dataframe': loads data as a pandas.DataFrame
-        xs : list, optional
-            List of world system coordinates in X direction.
-        ys : list, optional
-            List of world system coordinates in Y direction.
-        temporal_dim_name : str, optional
-            Name of the temporal dimension (default: 'tile').
-        band : int or str, optional
-            Band number or name (default is 1).
-
-        Returns
-        -------
-        list of numpy.ndarray or list of xarray.DataSets or pandas.DataFrame or numpy.ndarray or xarray.DataSet
-            Data as an array-like object.
-        """
-
-        timestamps = self[temporal_dim_name]
-
-        if dtype == "xarray":
-            if isinstance(data, list) and isinstance(data[0], np.ndarray):
-                ds = []
-                for i, entry in enumerate(data):
-                    x = xs[i]
-                    y = ys[i]
-                    if not isinstance(x, list):
-                        x = [x]
-                    if not isinstance(y, list):
-                        y = [y]
-                    xr_ar = xr.DataArray(entry, coords={'time': timestamps, 'x': x, 'y': y},
-                                         dims=['time', 'x', 'y'])
-                    ds.append(xr.Dataset(data_vars={band: xr_ar}))
-                converted_data = xr.merge(ds)
-            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
-                converted_data = xr.merge(data)
-                converted_data.attrs = data[0].attrs
-            elif isinstance(data, np.ndarray):
-                xr_ar = xr.DataArray(data, coords={'time': timestamps, 'x': xs, 'y': ys}, dims=['time', 'x', 'y'])
-                converted_data = xr.Dataset(data_vars={band: xr_ar})
-            elif isinstance(data, xr.Dataset):
-                converted_data = data
-            else:
-                raise DataTypeUnknown(type(data), dtype)
-        elif dtype == "numpy":
-            if isinstance(data, list) and isinstance(data[0], np.ndarray):
-                if len(data) == 1:
-                    converted_data = data[0]
-                else:
-                    converted_data = data
-            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
-                converted_data = [np.array(entry[band].data) for entry in data]
-                if len(converted_data) == 1:
-                    converted_data = converted_data[0]
-            elif isinstance(data, xr.Dataset):
-                converted_data = np.array(data[band].data)
-            elif isinstance(data, np.ndarray):
-                converted_data = data
-            else:
-                raise DataTypeUnknown(type(data), dtype)
-        elif dtype == "dataframe":
-            xr_ds = self.__convert_dtype(data, 'xarray', xs=xs, ys=ys, temporal_dim_name=temporal_dim_name,
-                                         band=band)
-            converted_data = xr_ds.to_dataframe()
-        else:
-            raise DataTypeUnknown(type(data), dtype)
-
-        return converted_data
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
 
     def encode(self, data):
         """
@@ -1040,6 +1021,7 @@ class EODataCube(object):
 
         return data
 
+    @_set_status('changed')
     @_check_inventory
     def intersect(self, dc_other, on_dimension=None, in_place=False):
         """
@@ -1067,6 +1049,7 @@ class EODataCube(object):
         dc_intersected = intersect_datacubes([self, dc_other], on_dimension=on_dimension)
         return self.__assign_inventory(dc_intersected.inventory, in_place=in_place)
 
+    @_set_status('changed')
     @_check_inventory
     def unite(self, dc_other, in_place=False):
         """
@@ -1093,6 +1076,7 @@ class EODataCube(object):
         dc_united = unite_datacubes([self, dc_other])
         return self.__assign_inventory(dc_united.inventory, in_place=in_place)
 
+    @_set_status('changed')
     def align_dimension(self, dc_other, name, in_place=False):
         """
         Aligns this data cube with another data cube along the specified dimension `name`.
@@ -1167,6 +1151,89 @@ class EODataCube(object):
 
         return geom
 
+    def close(self):
+        """ Closes data set pointer. """
+
+        self._ds.close()
+
+    def __convert_dtype(self, data, dtype, xs=None, ys=None, temporal_dim_name='time', band=1):
+        """
+        Converts `data` into an array-like object defined by `dtype`. It supports NumPy arrays, Xarray arrays and
+        Pandas data frames.
+
+        Parameters
+        ----------
+        data : list of numpy.ndarray or list of xarray.DataSets or numpy.ndarray or xarray.DataArray
+        dtype : str
+            Data type of the returned array-like structure (default is 'xarray'). It can be:
+                - 'xarray': loads data as an xarray.DataSet
+                - 'numpy': loads data as a numpy.ndarray
+                - 'dataframe': loads data as a pandas.DataFrame
+        xs : list, optional
+            List of world system coordinates in X direction.
+        ys : list, optional
+            List of world system coordinates in Y direction.
+        temporal_dim_name : str, optional
+            Name of the temporal dimension (default: 'time').
+        band : int or str, optional
+            Band number or name (default is 1).
+
+        Returns
+        -------
+        list of numpy.ndarray or list of xarray.DataSets or pandas.DataFrame or numpy.ndarray or xarray.DataSet
+            Data as an array-like object.
+        """
+
+        if dtype == "xarray":
+            timestamps = self[temporal_dim_name]
+            if isinstance(data, list) and isinstance(data[0], np.ndarray):
+                ds = []
+                for i, entry in enumerate(data):
+                    x = xs[i]
+                    y = ys[i]
+                    if not isinstance(x, list):
+                        x = [x]
+                    if not isinstance(y, list):
+                        y = [y]
+                    xr_ar = xr.DataArray(entry, coords={'time': timestamps, 'x': x, 'y': y},
+                                         dims=['time', 'x', 'y'])
+                    ds.append(xr.Dataset(data_vars={band: xr_ar}))
+                converted_data = xr.merge(ds)
+            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
+                converted_data = xr.merge(data)
+                converted_data.attrs = data[0].attrs
+            elif isinstance(data, np.ndarray):
+                xr_ar = xr.DataArray(data, coords={'time': timestamps, 'x': xs, 'y': ys}, dims=['time', 'x', 'y'])
+                converted_data = xr.Dataset(data_vars={band: xr_ar})
+            elif isinstance(data, xr.Dataset):
+                converted_data = data
+            else:
+                raise DataTypeUnknown(type(data), dtype)
+        elif dtype == "numpy":
+            if isinstance(data, list) and isinstance(data[0], np.ndarray):
+                if len(data) == 1:
+                    converted_data = data[0]
+                else:
+                    converted_data = data
+            elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
+                converted_data = [np.array(entry[band].data) for entry in data]
+                if len(converted_data) == 1:
+                    converted_data = converted_data[0]
+            elif isinstance(data, xr.Dataset):
+                converted_data = np.array(data[band].data)
+            elif isinstance(data, np.ndarray):
+                converted_data = data
+            else:
+                raise DataTypeUnknown(type(data), dtype)
+        elif dtype == "dataframe":
+            xr_ds = self.__convert_dtype(data, 'xarray', xs=xs, ys=ys, temporal_dim_name=temporal_dim_name,
+                                         band=band)
+            converted_data = xr_ds.to_dataframe()
+        else:
+            raise DataTypeUnknown(type(data), dtype)
+
+        return converted_data
+
     def __get_georef(self):
         """
         Retrieves georeference consisting of the spatialreference and the transformation parameters from the first file
@@ -1236,16 +1303,34 @@ class EODataCube(object):
         file_type = get_file_type(filepath)
         io_class = self.__io_class(file_type)
         io_instance = io_class(filepath, mode='r')
-        gt = io_instance.geotransform
-        boundary_extent = (gt[0], gt[3] + io_instance.shape[0] * gt[5], gt[0] + io_instance.shape[1] * gt[1], gt[3])
-        boundary_spref = osr.SpatialReference()
-        boundary_spref.ImportFromWkt(io_instance.spatialref)
-        bbox = [(boundary_extent[0], boundary_extent[1]), (boundary_extent[2], boundary_extent[3])]
-        boundary_geom = geometry.bbox2polygon(bbox, boundary_spref)
+        boundary_geom = boundary(io_instance.geotransform, io_instance.spatialref, io_instance.shape)
         # close data set
         io_instance.close()
 
         return shapely.wkt.loads(boundary_geom.ExportToWkt())
+
+    def __check_spatial_consistency(self, spatial_dim_name='tile'):
+        """
+        Checks if there are multiple tiles/file extents present in the data cube.
+        If so, a `SpatialInconsistencyError` is raised.
+
+        Parameters
+        ----------
+        spatial_dim_name: str, optional
+            Name of the spatial dimension (default: 'tile').
+        """
+
+        if spatial_dim_name in self.dimensions:
+            geoms = self[spatial_dim_name]
+            try:  # try apply unique function to DataSeries
+                uni_vals = geoms.unique()
+            except:
+                # the type seems not to be hashable, it could contain shapely geometries.
+                # try to convert them to strings and then apply a unique function
+                uni_vals = geoms.apply(lambda x: x.wkt).unique()
+
+            if len(uni_vals) > 1:
+                raise SpatialInconsistencyError()
 
     def __inventory_from_filepaths(self, filepaths, dimensions=None, smart_filename_creator=None):
         """
@@ -1459,6 +1544,18 @@ class EODataCube(object):
 
         return len(self.inventory)
 
+    def __repr__(self):
+        """
+        Defines the string representation of the class.
+
+        Returns
+        -------
+        str
+            String representation of a data cube, i.e. its inventory.
+        """
+
+        return str(self.inventory)
+
 
 def unite_datacubes(dcs):
     """
@@ -1482,9 +1579,9 @@ def unite_datacubes(dcs):
     inventories = [dc.inventory for dc in dcs]
 
     # this is a SQL alike UNION operation
-    merged_inventory = pd.concat(inventories, ignore_index=True).drop_duplicates().reset_index(drop=True)
+    united_inventory = pd.concat(inventories, ignore_index=True, sort=False).drop_duplicates().reset_index(drop=True)
 
-    dc_merged = EODataCube.from_inventory(merged_inventory, grid=dcs[0].grid)
+    dc_merged = EODataCube.from_inventory(united_inventory, grid=dcs[0].grid)
 
     return dc_merged
 

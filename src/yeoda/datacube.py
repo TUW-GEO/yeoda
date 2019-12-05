@@ -340,9 +340,9 @@ class EODataCube(object):
 
         pattern = re.compile(pattern)
         if not full_path:
-            file_filter = lambda x: re.match(pattern, os.path.basename(x)) is not None
+            file_filter = lambda x: re.search(pattern, os.path.basename(x)) is not None
         else:
-            file_filter = lambda x: re.match(pattern, x) is not None
+            file_filter = lambda x: re.search(pattern, x) is not None
         idx_filter = [file_filter(filepath) for filepath in self.filepaths]
         inventory = self.inventory[idx_filter]
         return self.__assign_inventory(inventory, in_place=in_place)

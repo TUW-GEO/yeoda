@@ -73,7 +73,7 @@ class ProductDataCube(EODataCube):
         """
 
         if root_dirpath is not None:
-            dir_tree = sgrt_tree(root_dirpath, register_file_pattern=(file_pattern))
+            dir_tree = sgrt_tree(root_dirpath, register_file_pattern=file_pattern)
         else:
             dir_tree = kwargs.get('dir_tree', None)
 
@@ -99,3 +99,7 @@ class ProductDataCube(EODataCube):
         # filter variable names
         if var_names is not None:
             self.filter_by_dimension(var_names, name='var_name', in_place=True)
+
+        # file pattern has not been applied yet and file pattern is given
+        if dir_tree is None and file_pattern is not None:
+            self.filter_files_with_pattern(file_pattern, in_place=True)

@@ -737,8 +737,8 @@ class EODataCube(object):
 
         extent = geometry.get_geometry_envelope(geom_roi)
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
-        min_row, min_col = xy2ij(extent[0], extent[3], this_gt)
-        max_row, max_col = xy2ij(extent[2], extent[1], this_gt)
+        min_col, min_row = xy2ij(extent[0], extent[3], this_gt)
+        max_col, max_row = xy2ij(extent[2], extent[1], this_gt)
         col_size = max_col - min_col
         row_size = max_row - min_row
         if apply_mask:
@@ -758,7 +758,7 @@ class EODataCube(object):
             if self._ds is None and self.status != "stable":
                 file_ts = {'filenames': list(self.filepaths)}
                 self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
-            data = self.decode(self._ds.read_ts(min_row, min_col, col_size=col_size, row_size=row_size))
+            data = self.decode(self._ds.read_ts(min_col, min_row, col_size=col_size, row_size=row_size))
             if data is None:
                 raise LoadingDataError()
 
@@ -961,7 +961,7 @@ class EODataCube(object):
 
             if sref is not None:
                 x, y = geometry.uv2xy(x, y, sref, this_sref)
-            row, col = xy2ij(x, y, this_gt)
+            col, row = xy2ij(x, y, this_gt)
             # replace old coordinates with transformed coordinates related to the users definition
             x_t, y_t = ij2xy(row, col, this_gt, origin=origin)
             xs[i] = x_t

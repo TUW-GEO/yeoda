@@ -136,9 +136,9 @@ def xy2ij(x, y, gt):
     Returns
     -------
     i : int
-        Row number in pixels.
-    j : int
         Column number in pixels.
+    j : int
+        Row number in pixels.
     """
 
     i = int(round(-1.0 * (gt[2] * gt[3] - gt[0] * gt[5] + gt[5] * x - gt[2] * y) /

@@ -155,9 +155,9 @@ def ij2xy(i, j, gt, origin="ul"):
     Parameters
     ----------
     i : int
-        Row number in pixels.
-    j : int
         Column number in pixels.
+    j : int
+        Row number in pixels.
     gt : dict
         Geo-transformation parameters/dictionary.
     origin: str, optional
@@ -177,9 +177,9 @@ def ij2xy(i, j, gt, origin="ul"):
     """
 
     px_shift_map = {"ul": (0, 0),
-                    "ur": (0, 1),
+                    "ur": (1, 0),
                     "lr": (1, 1),
-                    "ll": (1, 0),
+                    "ll": (0, 1),
                     "c": (.5, .5)}
 
     if origin in px_shift_map.keys():
@@ -198,6 +198,24 @@ def ij2xy(i, j, gt, origin="ul"):
 
 
 def boundary(gt, sref, shape):
+    """
+    Creates raster boundary polygon from geotransformation and shape parameters.
+
+    Parameters
+    ----------
+    gt: tuple
+        Geotransformation parameters.
+    sref: osr.SpatialReference
+        Spatial reference of the boundary polygon.
+    shape: tuple
+        Defines the size of the boundary polygon/raster (rows, columns).
+
+    Returns
+    -------
+    ogr.Geometry
+        Boundary polygon with the given spatial reference system assigned.
+    """
+
     boundary_extent = (gt[0], gt[3] + shape[0] * gt[5], gt[0] + shape[1] * gt[1], gt[3])
     boundary_spref = osr.SpatialReference()
     boundary_spref.ImportFromWkt(sref)

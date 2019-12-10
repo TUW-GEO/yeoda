@@ -109,15 +109,15 @@ class LoadingCoordsTester(LoadingTester):
         sref = osr.SpatialReference()
         sref.ImportFromEPSG(4326)
         self.sref = sref
-        self.row = 246
-        self.col = 970
+        row = 970
+        col = 246
         self.x = 4323250.
         self.y = 1314750.
 
-        self.ref_np_ar = (np.array([[[self.row + self.col]*4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
+        self.ref_np_ar = (np.array([[[row + col]*4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=da.array(self.ref_np_ar.astype(float)).rechunk((1, 1, 1)),
-                             coords={'time': self.timestamps, 'x': [self.x], 'y': [self.y]},
-                             dims=['time', 'x', 'y'])
+                             coords={'time': self.timestamps, 'y': [self.y], 'x': [self.x]},
+                             dims=['time', 'y', 'x'])
         self.ref_xr_ds = xr.Dataset(data_vars={'1': xr_ar})
         self.ref_pd_df = self.ref_xr_ds.to_dataframe()
 
@@ -235,30 +235,30 @@ class LoadingPixelsTester(LoadingTester):
         self.nc_filepaths, _ = setup_nc_multi_test_data()
         self.nc_filepath, _ = setup_nc_single_test_data()
 
-        self.row = 246
-        self.col = 970
+        self.row = 970
+        self.col = 246
         self.row_size = 10
-        self.col_size = 10
+        self.col_size = 16
         x = 4323250.
         y = 1314750.
         sres = 500.
 
         self.ref_np_ar = (np.array([[[self.row + self.col]*4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=self.ref_np_ar.astype(float),
-                             coords={'time': self.timestamps, 'x': [x], 'y': [y]},
-                             dims=['time', 'x', 'y'])
+                             coords={'time': self.timestamps, 'y': [y], 'x': [x]},
+                             dims=['time', 'y', 'x'])
         self.ref_xr_ds = xr.Dataset(data_vars={'1': xr_ar})
         self.ref_pd_df = self.ref_xr_ds.to_dataframe()
         rows, cols = np.meshgrid(np.arange(self.row, self.row+self.row_size),
-                                 np.arange(self.col, self.col+self.col_size))
-        xs = np.arange(x, x + self.row_size * sres, sres)
-        ys = np.arange(y, y - self.col_size * sres, -sres)
+                                 np.arange(self.col, self.col+self.col_size), indexing='ij')
+        xs = np.arange(x, x + self.col_size * sres, sres)
+        ys = np.arange(y, y - self.row_size * sres, -sres)
         base_np_ar_2D = rows + cols
         base_np_ar = np.stack([base_np_ar_2D]*4, axis=0)
         self.ref_np_ar_area = (base_np_ar + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, self.row_size, self.col_size)),
-                             coords={'time': self.timestamps, 'x': xs, 'y': ys},
-                             dims=['time', 'x', 'y'])
+                             coords={'time': self.timestamps, 'y': ys, 'x': xs},
+                             dims=['time', 'y', 'x'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
         self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe()
 
@@ -378,14 +378,14 @@ class LoadingGeomTester(LoadingTester):
         x = 4323250.
         y = 1314750.
         row_size = 10
-        col_size = 10
+        col_size = 16
         sres = 500.
 
         # define bounding boxes
         # general bounding box for reading data
         x_min = x
-        x_max = x + (col_size-1) * sres
-        y_min = y - (row_size-1) * sres
+        x_max = x + col_size * sres
+        y_min = y - row_size * sres
         y_max = y
         self.bbox = [(x_min, y_min), (x_max, y_max)]
         # defines bounding box being partially outside the tile (lower right corner)
@@ -398,15 +398,15 @@ class LoadingGeomTester(LoadingTester):
         self.partial_outside_bbox = [(x_min, y_min), (x_max, y_max)]
 
         rows, cols = np.meshgrid(np.arange(row, row+row_size),
-                                 np.arange(col, col+col_size))
-        xs = np.arange(x, x + row_size * sres, sres)
-        ys = np.arange(y, y - col_size * sres, -sres)
+                                 np.arange(col, col+col_size), indexing='ij')
+        xs = np.arange(x, x + col_size * sres, sres)
+        ys = np.arange(y, y - row_size * sres, -sres)
         base_np_ar_2D = rows + cols
         base_np_ar = np.stack([base_np_ar_2D]*4, axis=0)
         self.ref_np_ar_area = (base_np_ar + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, row_size, col_size)),
-                             coords={'time': self.timestamps, 'x': xs, 'y': ys},
-                             dims=['time', 'x', 'y'])
+                             coords={'time': self.timestamps, 'y': ys, 'x': xs},
+                             dims=['time', 'y', 'x'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
         self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe()
 
@@ -472,7 +472,7 @@ class LoadingGeomTester(LoadingTester):
         dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
         dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", in_place=True)
         data = dc.load_by_geom(self.partial_outside_bbox, spatial_dim_name='tile_name', dtype='numpy')
-        assert data.shape == (16, 10, 10)
+        assert data.shape == (16, 10, 16)
 
 if __name__ == '__main__':
     unittest.main()

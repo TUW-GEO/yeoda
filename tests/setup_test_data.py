@@ -166,7 +166,7 @@ def setup_nc_multi_test_data():
                          spatialref=tile_oi.get_geotags()['spatialreference'])
             data_i = data + timestamps.index(timestamp)
             xr_ar = xr.DataArray(data=data_i[None, :, :], coords={'time': [timestamp]},
-                                 dims=['time', 'x', 'y'])
+                                 dims=['time', 'y', 'x'])
             xr_ds = xr.Dataset(data_vars={'1': xr_ar}, attrs=tags)
             nc_file.write(xr_ds)
             nc_file.close()
@@ -220,7 +220,7 @@ def setup_nc_single_test_data():
 
             data_i = data + timestamps.index(timestamp)
             xr_ar = xr.DataArray(data=data_i[None, :, :], coords={'time': [timestamp]},
-                                 dims=['time', 'x', 'y'], attrs=tags)
+                                 dims=['time', 'y', 'x'], attrs=tags)
             xr_dss.append(xr.Dataset(data_vars={var_name.strip('-'): xr_ar}))
 
         nc_file = NcFile(filepath, mode='w', geotransform=tile_oi.geotransform(),

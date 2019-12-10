@@ -767,9 +767,9 @@ class EODataCube(object):
 
             cols_traffo = np.concatenate(([min_col] * row_size, np.arange(min_col, max_col))).astype(float)
             rows_traffo = np.concatenate((np.arange(min_row, max_row), [min_row] * col_size)).astype(float)
-            x_traffo, y_traffo = inv_traffo_fun(rows_traffo, cols_traffo)
-            xs = x_traffo[:row_size]
-            ys = y_traffo[row_size:]
+            x_traffo, y_traffo = inv_traffo_fun(cols_traffo, rows_traffo)
+            xs = x_traffo[row_size:]
+            ys = y_traffo[:row_size]
         elif file_type == "NetCDF":
             if self._ds is None and self.status != "stable":
                 file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
@@ -871,11 +871,11 @@ class EODataCube(object):
                     max_row = row + row_size
                     cols_traffo = np.concatenate(([col] * row_size, np.arange(col, max_col))).astype(float)
                     rows_traffo = np.concatenate((np.arange(row, max_row), [row] * col_size)).astype(float)
-                    x_traffo, y_traffo = inv_traffo_fun(rows_traffo, cols_traffo)
-                    xs_i = x_traffo[:row_size].tolist()
-                    ys_i = y_traffo[row_size:].tolist()
+                    x_traffo, y_traffo = inv_traffo_fun(cols_traffo, rows_traffo)
+                    xs_i = x_traffo[row_size:].tolist()
+                    ys_i = y_traffo[:row_size].tolist()
                 else:
-                    xs_i, ys_i = inv_traffo_fun(row, col)
+                    xs_i, ys_i = inv_traffo_fun(col, row)
                 xs.append(xs_i)
                 ys.append(ys_i)
             elif file_type == "NetCDF":
@@ -963,7 +963,7 @@ class EODataCube(object):
                 x, y = geometry.uv2xy(x, y, sref, this_sref)
             col, row = xy2ij(x, y, this_gt)
             # replace old coordinates with transformed coordinates related to the users definition
-            x_t, y_t = ij2xy(row, col, this_gt, origin=origin)
+            x_t, y_t = ij2xy(col, row, this_gt, origin=origin)
             xs[i] = x_t
             ys[i] = y_t
 
@@ -1195,15 +1195,15 @@ class EODataCube(object):
                         x = [x]
                     if not isinstance(y, list):
                         y = [y]
-                    xr_ar = xr.DataArray(entry, coords={'time': timestamps, 'x': x, 'y': y},
-                                         dims=['time', 'x', 'y'])
+                    xr_ar = xr.DataArray(entry, coords={'time': timestamps, 'y': y, 'x': x},
+                                         dims=['time', 'y', 'x'])
                     ds.append(xr.Dataset(data_vars={band: xr_ar}))
                 converted_data = xr.merge(ds)
             elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
                 converted_data = xr.merge(data)
                 converted_data.attrs = data[0].attrs
             elif isinstance(data, np.ndarray):
-                xr_ar = xr.DataArray(data, coords={'time': timestamps, 'x': xs, 'y': ys}, dims=['time', 'x', 'y'])
+                xr_ar = xr.DataArray(data, coords={'time': timestamps, 'y': ys, 'x': xs}, dims=['time', 'y', 'x'])
                 converted_data = xr.Dataset(data_vars={band: xr_ar})
             elif isinstance(data, xr.Dataset):
                 converted_data = data

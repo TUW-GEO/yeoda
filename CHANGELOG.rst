@@ -2,6 +2,11 @@
 Changelog
 =========
 
+Version 0.1.4
+=============
+
+- major bug fix: column and row access was partly switched
+
 Version 0.1.3
 =============
 

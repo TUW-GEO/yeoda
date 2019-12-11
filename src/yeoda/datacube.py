@@ -1385,7 +1385,7 @@ class EODataCube(object):
                 if key not in inventory.keys():
                     if n == 0:  # first time
                         inventory[key] = []
-                    else:
+                    else:  # fill dimension with None
                         inventory[key] = [None] * n
 
             for entry in extended_entries:

@@ -746,7 +746,7 @@ class EODataCube(object):
             data_mask = np.ones((row_size, col_size))
             for col in range(col_size):
                 for row in range(row_size):
-                    x, y = inv_traffo_fun(min_row + row, min_col + col)
+                    x, y = inv_traffo_fun(min_col + col, min_row + row)
                     point = Point(x, y)
                     if point.within(geom_roi) or point.touches(geom_roi):
                         data_mask[row, col] = 0

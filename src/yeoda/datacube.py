@@ -714,9 +714,7 @@ class EODataCube(object):
         if self.grid:
             if spatial_dim_name not in self.dimensions:
                 raise DimensionUnkown(spatial_dim_name)
-            this_sref = None
-            if sref is None:
-                this_sref = self.grid.core.projection.osr_spref
+            this_sref = self.grid.core.projection.osr_spref
             tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
@@ -725,9 +723,11 @@ class EODataCube(object):
         else:
             this_sref, this_gt = self.__get_georef()
 
-        geom_roi = any_geom2ogr_geom(geom, osr_sref=this_sref)
         if sref is not None:
+            geom_roi = any_geom2ogr_geom(geom, osr_sref=sref)
             geom_roi = geometry.transform_geometry(geom_roi, this_sref)
+        else:
+            geom_roi = any_geom2ogr_geom(geom, osr_sref=this_sref)
 
         # clip region of interest to tile boundary
         boundary_ogr = ogr.CreateGeometryFromWkt(self.boundary(spatial_dim_name=spatial_dim_name).wkt)
@@ -942,9 +942,7 @@ class EODataCube(object):
         if self.grid is not None:
             if spatial_dim_name not in self.dimensions:
                 raise DimensionUnkown(spatial_dim_name)
-            this_sref = None
-            if sref is None:
-                this_sref = self.grid.core.projection.osr_spref
+            this_sref = self.grid.core.projection.osr_spref
             tilenames = list(self.inventory[spatial_dim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')

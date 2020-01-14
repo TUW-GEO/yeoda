@@ -113,6 +113,9 @@ def any_geom2ogr_geom(geom, osr_sref):
         geom_ogr = ogr.CreateGeometryFromWkt(geom.wkt)
         geom_ogr.AssignSpatialReference(osr_sref)
     elif isinstance(geom, ogr.Geometry):
+        geom_sref = geom.GetSpatialReference()
+        if geom_sref is None:
+            geom.AssignSpatialReference(osr_sref)
         geom_ogr = geom
     else:
         raise GeometryUnkown(geom)

@@ -725,15 +725,17 @@ class EODataCube(object):
 
         if sref is not None:
             geom_roi = any_geom2ogr_geom(geom, osr_sref=sref)
-            geom_roi = geometry.transform_geometry(geom_roi, this_sref)
         else:
             geom_roi = any_geom2ogr_geom(geom, osr_sref=this_sref)
 
+        roi_sref = geom_roi.GetSpatialReference()
+        if not this_sref.IsSame(roi_sref):
+            geom_roi = geometry.transform_geometry(geom_roi, this_sref)
+
         # clip region of interest to tile boundary
         boundary_ogr = ogr.CreateGeometryFromWkt(self.boundary(spatial_dim_name=spatial_dim_name).wkt)
-        roi_sref = geom_roi.GetSpatialReference()
         geom_roi = geom_roi.Intersection(boundary_ogr)
-        geom_roi.AssignSpatialReference(roi_sref)
+        geom_roi.AssignSpatialReference(this_sref)
 
         extent = geometry.get_geometry_envelope(geom_roi)
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
@@ -1257,6 +1259,11 @@ class EODataCube(object):
             return this_sref, tuple(this_gt)
         else:
             return None, None
+
+    # def __crop_geom_to_tile_boundary(self):
+    #
+    #     ogr_geom = any_geom2ogr_geom
+    #     return
 
     def __io_class(self, file_type):
         """

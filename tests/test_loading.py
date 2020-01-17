@@ -396,6 +396,7 @@ class LoadingGeomTester(LoadingTester):
         y_min = y_lr - 2*row_size*sres
         y_max = y_lr + row_size*sres
         self.partial_outside_bbox = [(x_min, y_min), (x_max, y_max)]
+        self.outside_bbox = [(0, 0), (1, 1)]
 
         rows, cols = np.meshgrid(np.arange(row, row+row_size),
                                  np.arange(col, col+col_size), indexing='ij')
@@ -474,5 +475,20 @@ class LoadingGeomTester(LoadingTester):
         data = dc.load_by_geom(self.partial_outside_bbox, spatial_dim_name='tile_name', dtype='numpy')
         assert data.shape == (16, 10, 16)
 
+    def test_load_geom_no_intersection(self):
+        """ Tests loading data when the region of interest is outside the data cube extent. """
+
+        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
+        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", in_place=True)
+        try:
+            _ = dc.load_by_geom(self.outside_bbox, spatial_dim_name='tile_name', dtype='numpy')
+            assert False
+        except:
+            assert True
+
 if __name__ == '__main__':
     unittest.main()
+    #tester = LoadingGeomTester()
+    #tester.setUpClass()
+    #tester.setUp()
+    #tester.test_load_gt2numpy_by_geom()

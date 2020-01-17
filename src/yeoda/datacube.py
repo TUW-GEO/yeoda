@@ -735,6 +735,8 @@ class EODataCube(object):
         # clip region of interest to tile boundary
         boundary_ogr = ogr.CreateGeometryFromWkt(self.boundary(spatial_dim_name=spatial_dim_name).wkt)
         geom_roi = geom_roi.Intersection(boundary_ogr)
+        if geom_roi.ExportToWkt() == 'GEOMETRYCOLLECTION EMPTY':
+            raise Exception('The given geometry does not intersect with the tile boundaries.')
         geom_roi.AssignSpatialReference(this_sref)
 
         extent = geometry.get_geometry_envelope(geom_roi)

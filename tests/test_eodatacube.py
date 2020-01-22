@@ -42,7 +42,8 @@ from tests.setup_test_data import setup_gt_test_data
 from tests.setup_test_data import dirpath_test
 
 from equi7grid.equi7grid import Equi7Grid
-from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
+from geopathfinder.file_naming import SmartFilename
+from geopathfinder.naming_conventions.sgrt_naming import SgrtFilename
 
 # import yeoda
 from yeoda.datacube import EODataCube
@@ -74,11 +75,13 @@ class EODataCubeTester(unittest.TestCase):
     def test_unknown_filename(self):
         """ Checks data cube structure if filename translation fails. """
 
-        # function which is not able to interpret the filename
-        def smart_filename_creator(x):
-            raise Exception('')
+        # class which is not able to interpret the filename
+        class SmartFilenameFail(SmartFilename):
+            @classmethod
+            def from_filename(self, filename, **kwargs):
+                raise Exception
 
-        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=smart_filename_creator,
+        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SmartFilenameFail,
                         dimensions=['time', 'var_name', 'pol'])
         assert len(dc.dimensions) == 0
         assert len(dc) == len(self.gt_filepaths)
@@ -86,9 +89,9 @@ class EODataCubeTester(unittest.TestCase):
     def test_rename_dimension(self):
         """ Tests renaming a dimension of a data cube. """
 
-        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                         dimensions=['time', 'var_name', 'pol'])
-        dc.rename_dimensions({'pol': 'band'}, in_place=True)
+        dc.rename_dimensions({'pol': 'band'}, inplace=True)
         assert 'band' in dc.inventory.columns
         assert 'pol' not in dc.inventory.columns
         assert len(set(dc['band'])) == 2
@@ -96,30 +99,30 @@ class EODataCubeTester(unittest.TestCase):
     def test_add_dimension(self):
         """ Tests adding a dimension to a data cube. """
 
-        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                         dimensions=['time', 'var_name', 'pol'])
         dim_values = np.random.rand(len(dc))
-        dc.add_dimension("value", dim_values, in_place=True)
+        dc.add_dimension("value", dim_values, inplace=True)
         assert "value" in dc.inventory.columns
         assert list(dc['value']) == dim_values.tolist()
 
     def test_sort_by_dimension(self):
         """ Tests sorting a dimension of the data cube. """
 
-        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                         dimensions=['time', 'var_name', 'pol'])
         timestamps = list(dc['time'])
         dim_values = np.random.rand(len(dc))
         timestamps_sorted = np.array(timestamps)[np.argsort(dim_values)].tolist()
 
-        dc.add_dimension("value", dim_values, in_place=True)
-        dc.sort_by_dimension("value", in_place=True)
+        dc.add_dimension("value", dim_values, inplace=True)
+        dc.sort_by_dimension("value", inplace=True)
         assert list(dc['time']) == timestamps_sorted
 
     def test_split_time(self):
         """ Tests splitting of the data cube in time to create multiple data cubes. """
 
-        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                         dimensions=['time', 'var_name', 'pol'])
         first_time_interval = (self.timestamps[0], self.timestamps[1])
         second_time_interval = (self.timestamps[2], self.timestamps[-1])
@@ -132,7 +135,7 @@ class EODataCubeTester(unittest.TestCase):
     def test_split_yearly(self):
         """ Test splitting of the data cube in yearly intervals to create yearly data cubes. """
 
-        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                         dimensions=['time', 'var_name', 'pol'])
         yearly_dcs = dc.split_yearly(name='time')
         assert len(yearly_dcs) == 2
@@ -145,7 +148,7 @@ class EODataCubeTester(unittest.TestCase):
     def test_split_monthly(self):
         """ Test splitting of the data cube in monthly intervals to create monthly data cubes. """
 
-        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                         dimensions=['time', 'var_name', 'pol'])
         monthly_dcs = dc.split_monthly(name='time')
         assert len(monthly_dcs) == 4
@@ -161,9 +164,9 @@ class EODataCubeTester(unittest.TestCase):
         """
 
         n = len(self.gt_filepaths)
-        dc_1 = EODataCube(filepaths=self.gt_filepaths[:int(n/2)], smart_filename_creator=create_sgrt_filename,
+        dc_1 = EODataCube(filepaths=self.gt_filepaths[:int(n/2)], smart_filename_class=SgrtFilename,
                           dimensions=['time', 'pol'])
-        dc_2 = EODataCube(filepaths=self.gt_filepaths[int(n/2):], smart_filename_creator=create_sgrt_filename,
+        dc_2 = EODataCube(filepaths=self.gt_filepaths[int(n/2):], smart_filename_class=SgrtFilename,
                           dimensions=['time', 'orbit_direction'])
 
         dc_united = dc_1.unite(dc_2)
@@ -178,9 +181,9 @@ class EODataCubeTester(unittest.TestCase):
         """
 
         # empty data cube when an intersection is applied
-        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                           dimensions=['time', 'pol'])
-        dc_2 = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc_2 = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                           dimensions=['time', 'orbit_direction'])
         dc_1.inventory = dc_1.inventory[dc_1['time'] == self.timestamps[0]]
         dc_2.inventory = dc_2.inventory[dc_2['time'] == self.timestamps[1]]
@@ -193,9 +196,9 @@ class EODataCubeTester(unittest.TestCase):
         intersected with the data of to the original data cube.
         """
 
-        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                           dimensions=['time', 'pol'])
-        dc_2 = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc_2 = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                           dimensions=['time', 'orbit_direction'])
 
         dc_intersected = dc_1.intersect(dc_2)
@@ -210,14 +213,14 @@ class EODataCubeTester(unittest.TestCase):
         intersection and data cube alignment on the temporal dimension.
         """
 
-        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                           dimensions=['time'])
         dc_2 = dc_1.clone()
         dc_2.inventory = dc_2.inventory[dc_2['time'] != self.timestamps[0]]
         dc_2.inventory = dc_2.inventory[dc_2['time'] != self.timestamps[2]]
 
-        dc_aligned = dc_1.align_dimension(dc_2, name='time', in_place=False)
-        dc_intersected = dc_1.intersect(dc_2, on_dimension='time', in_place=False)
+        dc_aligned = dc_1.align_dimension(dc_2, name='time', inplace=False)
+        dc_intersected = dc_1.intersect(dc_2, on_dimension='time', inplace=False)
 
         assert sorted(list(dc_aligned['time'])) == sorted(list(dc_intersected['time']))
 
@@ -228,13 +231,13 @@ class EODataCubeTester(unittest.TestCase):
         in the other data cube.
         """
 
-        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                           dimensions=['time'])
         dc_2 = dc_1.clone()
         dc_2.inventory = dc_2.inventory[dc_2['time'] != self.timestamps[0]]
         dc_2.inventory = dc_2.inventory[dc_2['time'] != self.timestamps[2]]
 
-        dc_1.align_dimension(dc_2, name='time', in_place=True)
+        dc_1.align_dimension(dc_2, name='time', inplace=True)
         assert sorted(list(set(dc_1['time']))) == [self.timestamps[1], self.timestamps[3]]
 
     def test_align_dimension_grow(self):
@@ -244,7 +247,7 @@ class EODataCubeTester(unittest.TestCase):
         in the other data cube by duplicating the entries.
         """
 
-        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_creator=create_sgrt_filename,
+        dc_1 = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
                           dimensions=['time'])
         dc_2 = dc_1.clone()
         timestamps = list(dc_1['time'])
@@ -254,7 +257,7 @@ class EODataCubeTester(unittest.TestCase):
                        timestamps.index(self.timestamps[3])]
         dc_1.inventory = dc_1.inventory.iloc[subset_idxs]
 
-        dc_1.align_dimension(dc_2, name='time', in_place=True)
+        dc_1.align_dimension(dc_2, name='time', inplace=True)
         assert (dc_1['time'] == dc_2['time']).all()
 
     def test_boundary_fail(self):
@@ -270,7 +273,7 @@ class EODataCubeTester(unittest.TestCase):
         """ Tests equality of tile and data cube boundary. """
 
         dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
-        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", in_place=True)
+        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", inplace=True)
         boundary = dc.boundary(spatial_dim_name="tile_name")
         equi7 = Equi7Grid(500)
         tile_oi = equi7.EU.tilesys.create_tile(name="E042N012T6")
@@ -279,3 +282,7 @@ class EODataCubeTester(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+    #tester = EODataCubeTester()
+    #tester.setUpClass()
+    #tester.setUp()
+    #tester.test_rename_dimension()

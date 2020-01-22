@@ -68,15 +68,15 @@ class FilteringTester(unittest.TestCase):
         self.filepaths, self.timestamps = setup_gt_test_data()
         self.data_dirpath = os.path.join(dirpath_test(), 'data', 'Sentinel-1_CSAR')
 
-    def test_filter_pols_in_place(self):
+    def test_filter_pols_inplace(self):
         """ Creates a `PreprocessedDataCube` and tests filtering of polarisations on the original data cube. """
 
         dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol'])
         assert len(set(dc['pol'])) == 2
-        dc.filter_by_dimension("VV", name="pol", in_place=True)
+        dc.filter_by_dimension("VV", name="pol", inplace=True)
         assert len(set(dc['pol'])) == 1
 
-    def test_filter_pols_not_in_place(self):
+    def test_filter_pols_not_inplace(self):
         """ Creates a `PreprocessedDataCube` and tests filtering of polarisations on a newly created data cube. """
 
         dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol'])
@@ -92,8 +92,8 @@ class FilteringTester(unittest.TestCase):
 
         dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol'])
         dc_clone = dc.clone()
-        dc.filter_by_dimension("VV", name="pol", in_place=True)
-        dc_clone.filter_by_dimension("VH", name="pol", in_place=True)
+        dc.filter_by_dimension("VV", name="pol", inplace=True)
+        dc_clone.filter_by_dimension("VH", name="pol", inplace=True)
         assert len(set(dc['pol'])) == 1
         assert list(set(dc['pol']))[0] == "VV"
         assert len(set(dc_clone['pol'])) == 1
@@ -105,7 +105,7 @@ class FilteringTester(unittest.TestCase):
         dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol'])
         start_time = self.timestamps[0]
         end_time = self.timestamps[1]
-        dc.filter_by_dimension([(start_time, end_time)], expressions=[(">=", "<=")], in_place=True)
+        dc.filter_by_dimension([(start_time, end_time)], expressions=[(">=", "<=")], inplace=True)
         assert sorted(list(set(dc['time']))) == self.timestamps[:2]
 
     def test_filter_var_names(self):
@@ -130,7 +130,7 @@ class FilteringTester(unittest.TestCase):
 
         pre_dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol'])
         sig0_dc = SIG0DataCube(self.data_dirpath, sres=500, dimensions=['time', 'pol'])
-        pre_dc.filter_files_with_pattern(".*SIG0.*", in_place=True)
+        pre_dc.filter_files_with_pattern(".*SIG0.*", inplace=True)
         assert sorted(list(sig0_dc['filepath'])) == sorted(list(pre_dc['filepath']))
 
     def test_filter_spatially_by_tilename(self):
@@ -138,7 +138,7 @@ class FilteringTester(unittest.TestCase):
 
         dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol', 'tile_name'])
         assert len(set(dc['tile_name'])) == 2
-        dc.filter_spatially_by_tilename("E042N012T6", dimension_name='tile_name', in_place=True)
+        dc.filter_spatially_by_tilename("E042N012T6", dimension_name='tile_name', inplace=True)
         assert len(set(dc['tile_name'])) == 1
         assert list(set(dc['tile_name']))[0] == "E042N012T6"
 
@@ -151,7 +151,7 @@ class FilteringTester(unittest.TestCase):
         dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol', 'tile_name'])
         bbox, sref = roi_test()
         assert len(set(dc['tile_name'])) == 2
-        dc.filter_spatially_by_geom(bbox, sref=sref, dimension_name='tile_name', in_place=True)
+        dc.filter_spatially_by_geom(bbox, sref=sref, dimension_name='tile_name', inplace=True)
         assert len(set(dc['tile_name'])) == 1
         assert list(set(dc['tile_name']))[0] == "E042N012T6"
 
@@ -160,7 +160,7 @@ class FilteringTester(unittest.TestCase):
 
         dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'orbit_direction'])
         assert len(set(dc['orbit_direction'])) == 2
-        dc.filter_by_metadata({'direction': 'D'}, in_place=True)
+        dc.filter_by_metadata({'direction': 'D'}, inplace=True)
         assert len(set(dc['orbit_direction'])) == 1
         assert list(set(dc['orbit_direction']))[0] == "D"
 

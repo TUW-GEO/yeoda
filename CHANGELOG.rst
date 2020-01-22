@@ -5,6 +5,8 @@ Changelog
 Version 0.1.4
 =============
 
+- changed `in_place` to `inplace` to have same syntax as Pandas
+- new filename parsing syntax when using geopathfinder
 - major bug fix: column and row access was partly switched
 
 Version 0.1.3

@@ -47,7 +47,7 @@ from tests.setup_test_data import setup_nc_single_test_data
 from tests.setup_test_data import dirpath_test
 
 # import SGRT naming convention from geopathfinder
-from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
+from geopathfinder.naming_conventions.sgrt_naming import SgrtFilename
 
 # import yeoda data cube
 from yeoda.datacube import EODataCube
@@ -80,13 +80,13 @@ class LoadingTester(unittest.TestCase):
         appropriately.
         """
 
-        dc = EODataCube(filepaths=filepaths, smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=filepaths, smart_filename_class=SgrtFilename,
                         dimensions=['time', 'var_name', 'pol', 'tile_name', 'orbit_direction'])
 
-        dc.filter_by_dimension('VV', name='pol', in_place=True)
-        dc.filter_by_dimension('SIG0', name='var_name', in_place=True)
-        dc.filter_by_dimension('D', name='orbit_direction', in_place=True)
-        dc.filter_spatially_by_tilename('E042N012T6', dimension_name='tile_name', in_place=True, use_grid=False)
+        dc.filter_by_dimension('VV', name='pol', inplace=True)
+        dc.filter_by_dimension('SIG0', name='var_name', inplace=True)
+        dc.filter_by_dimension('D', name='orbit_direction', inplace=True)
+        dc.filter_spatially_by_tilename('E042N012T6', dimension_name='tile_name', inplace=True, use_grid=False)
 
         return dc
 
@@ -215,7 +215,7 @@ class LoadingCoordsTester(LoadingTester):
     def test_load_singlenc2xarray_by_coord(self):
         """ Tests loading of an xarray array from a multidimensional NetCDF file by geographic coordinates. """
 
-        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_class=SgrtFilename,
                         dimensions=['time'])
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, band='SIG0', dtype='xarray', origin='c')
         assert self.ref_xr_ds.equals(data.rename({'SIG0': '1'}))
@@ -352,7 +352,7 @@ class LoadingPixelsTester(LoadingTester):
     def test_load_singlenc2xarray_by_pixels(self):
         """ Tests loading of an xarray array from a multidimensional NetCDF file by pixel coordinates. """
 
-        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_class=SgrtFilename,
                         dimensions=['time'])
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, band='SIG0',
                                  dtype='xarray', origin='c')
@@ -461,7 +461,7 @@ class LoadingGeomTester(LoadingTester):
     def test_load_singlenc2xarray_by_pixels(self):
         """ Tests loading of an xarray array from a multidimensional NetCDF file by a bounding box. """
 
-        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_creator=create_sgrt_filename,
+        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_class=SgrtFilename,
                         dimensions=['time'])
         data = dc.load_by_geom(self.bbox, band='SIG0', dtype='xarray', origin='c')
         assert self.ref_xr_ds_area.equals(data.rename({'SIG0': '1'}))
@@ -471,7 +471,7 @@ class LoadingGeomTester(LoadingTester):
         """ Tests loading data when the region of interest is larger than the data cube extent. """
 
         dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
-        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", in_place=True)
+        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", inplace=True)
         data = dc.load_by_geom(self.partial_outside_bbox, spatial_dim_name='tile_name', dtype='numpy')
         assert data.shape == (16, 10, 16)
 
@@ -479,7 +479,7 @@ class LoadingGeomTester(LoadingTester):
         """ Tests loading data when the region of interest is outside the data cube extent. """
 
         dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
-        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", in_place=True)
+        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", inplace=True)
         try:
             _ = dc.load_by_geom(self.outside_bbox, spatial_dim_name='tile_name', dtype='numpy')
             assert False
@@ -488,7 +488,3 @@ class LoadingGeomTester(LoadingTester):
 
 if __name__ == '__main__':
     unittest.main()
-    #tester = LoadingGeomTester()
-    #tester.setUpClass()
-    #tester.setUp()
-    #tester.test_load_gt2numpy_by_geom()

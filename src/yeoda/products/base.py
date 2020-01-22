@@ -32,7 +32,7 @@ Main code for creating a TUWGEO product data cube.
 """
 
 # import geopathfinder modules for file and folder naming convention
-from geopathfinder.naming_conventions.sgrt_naming import create_sgrt_filename
+from geopathfinder.naming_conventions.sgrt_naming import SgrtFilename
 from geopathfinder.naming_conventions.sgrt_naming import sgrt_tree
 
 # import TUWGEO standard grid
@@ -94,12 +94,12 @@ class ProductDataCube(EODataCube):
             dimensions.append('tile_name')
 
         super().__init__(inventory=inventory, filepaths=filepaths, dimensions=dimensions,
-                         smart_filename_creator=create_sgrt_filename, grid=grid)
+                         smart_filename_class=SgrtFilename, grid=grid)
 
         # filter variable names
         if var_names is not None:
-            self.filter_by_dimension(var_names, name='var_name', in_place=True)
+            self.filter_by_dimension(var_names, name='var_name', inplace=True)
 
         # file pattern has not been applied yet and file pattern is given
         if dir_tree is None and file_pattern is not None:
-            self.filter_files_with_pattern(file_pattern, in_place=True)
+            self.filter_files_with_pattern(file_pattern, inplace=True)

@@ -80,7 +80,7 @@ def _check_inventory(f):
     Parameters
     ----------
     f : function
-        'EODataCube' function that has a keyword argument `in_place`
+        'EODataCube' function that has a keyword argument `inplace`
 
     Returns
     -------
@@ -89,11 +89,11 @@ def _check_inventory(f):
     """
 
     def f_wrapper(self, *args, **kwargs):
-        in_place = kwargs.get('in_place')
+        inplace = kwargs.get('inplace')
         if self.inventory is not None:
             return f(self, *args, **kwargs)
         else:
-            if in_place:
+            if inplace:
                 return None
             else:
                 return self
@@ -122,8 +122,8 @@ def _set_status(status):
     def decorator(f):
         def f_wrapper(self, *args, **kwargs):
             ret_val = f(self, *args, **kwargs)
-            in_place = kwargs.get('in_place', None)
-            if in_place:
+            inplace = kwargs.get('inplace', None)
+            if inplace:
                 self.status = status
             return ret_val
         return f_wrapper
@@ -135,7 +135,7 @@ class EODataCube(object):
     A file(name) based data cube for preferably gridded and well-structured EO data.
     """
 
-    def __init__(self, filepaths=None, grid=None, smart_filename_creator=None, dimensions=None, inventory=None,
+    def __init__(self, filepaths=None, grid=None, smart_filename_class=None, dimensions=None, inventory=None,
                  io_map=None):
         """
         Constructor of the `EODataCube` class.
@@ -146,8 +146,8 @@ class EODataCube(object):
             List of file paths.
         grid : pytileproj.base.TiledProjection, optional
             Tiled projection/grid object/class (e.g. `Equi7Grid`, `LatLonGrid`).
-        smart_filename_creator : function, optional
-            A function that allows to create a `SmartFilename` instance from a filepath.
+        smart_filename_class : geopathfinder.file_naming.SmartFilename, optional
+            `SmartFilename` class to handle the interpretation of filenames.
         dimensions : list of str, optional
             List of filename parts to use as dimensions. The strings have to match with the keys of the `SmartFilename`
             fields definition.
@@ -160,7 +160,7 @@ class EODataCube(object):
         """
 
         # initialise simple class variables
-        self.smart_filename_creator = smart_filename_creator
+        #self.smart_filename_class = smart_filename_class
         self._ds = None  # data set pointer
         self.status = None
 
@@ -176,7 +176,7 @@ class EODataCube(object):
             self.inventory = inventory
         else:
             self.__inventory_from_filepaths(filepaths, dimensions=dimensions,
-                                            smart_filename_creator=smart_filename_creator)
+                                            smart_filename_class=smart_filename_class)
 
         dimensions = [] if dimensions is None else dimensions
         self.grid = None
@@ -184,7 +184,7 @@ class EODataCube(object):
             self.grid = grid
         elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()) and ('geometry' in dimensions):
             geometries = [self.__geometry_from_file(filepath) for filepath in self.filepaths]
-            self.add_dimension('geometry', geometries, in_place=True)
+            self.add_dimension('geometry', geometries, inplace=True)
 
     @property
     def filepaths(self):
@@ -263,7 +263,7 @@ class EODataCube(object):
         return cls(inventory=inventory, grid=grid)
 
     @_check_inventory
-    def rename_dimensions(self, dimensions_map, in_place=False):
+    def rename_dimensions(self, dimensions_map, inplace=False):
         """
         Renames the dimensions of the data cube.
 
@@ -272,7 +272,7 @@ class EODataCube(object):
         dimensions_map : dict
             A dictionary representing the relation between old and new dimension names. The keys are the old dimension
             names, the values the new dimension names (e.g., {'time_begin': 'time'}).
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -284,10 +284,10 @@ class EODataCube(object):
 
         inventory = copy.deepcopy(self.inventory)
         inventory = inventory.rename(columns=dimensions_map)
-        return self.__assign_inventory(inventory, in_place=in_place)
+        return self.__assign_inventory(inventory, inplace=inplace)
 
     @_check_inventory
-    def add_dimension(self, name, values, in_place=False):
+    def add_dimension(self, name, values, inplace=False):
         """
         Adds a new dimension to the data cube.
 
@@ -298,7 +298,7 @@ class EODataCube(object):
         values : list
             Values of the new dimension (e.g., cloud cover, quality flag, ...).
             They have to have the same length as all the rows in the inventory.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -313,11 +313,11 @@ class EODataCube(object):
         else:
             ds = pd.Series(values, index=self.inventory.index)
         inventory = self.inventory.assign(**{name: ds})
-        return self.__assign_inventory(inventory, in_place=in_place)
+        return self.__assign_inventory(inventory, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
-    def filter_files_with_pattern(self, pattern, full_path=False, in_place=False):
+    def filter_files_with_pattern(self, pattern, full_path=False, inplace=False):
         """
         Filters all filepaths according to the given pattern.
 
@@ -328,7 +328,7 @@ class EODataCube(object):
         full_path : boolean, optional
             Uses the full file paths for filtering if it is set to True.
             Otherwise the filename is used (default value is False).
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -345,11 +345,11 @@ class EODataCube(object):
             file_filter = lambda x: re.search(pattern, x) is not None
         idx_filter = [file_filter(filepath) for filepath in self.filepaths]
         inventory = self.inventory[idx_filter]
-        return self.__assign_inventory(inventory, in_place=in_place)
+        return self.__assign_inventory(inventory, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
-    def filter_by_metadata(self, metadata, in_place=False):
+    def filter_by_metadata(self, metadata, inplace=False):
         """
         Filters all file paths according to the given metadata.
 
@@ -357,7 +357,7 @@ class EODataCube(object):
         ----------
         metadata : dict
             Key value relationships being expected to be in the metadata.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -387,11 +387,11 @@ class EODataCube(object):
             bool_filter.append(select)
 
         inventory = self.inventory[bool_filter]
-        return self.__assign_inventory(inventory, in_place=in_place)
+        return self.__assign_inventory(inventory, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
-    def sort_by_dimension(self, name, ascending=True, in_place=False):
+    def sort_by_dimension(self, name, ascending=True, inplace=False):
         """
         Sorts the data cube/inventory according to the given dimension.
 
@@ -401,7 +401,7 @@ class EODataCube(object):
             Name of the dimension.
         ascending : bool, optional
             If true, sorts in ascending order, otherwise in descending order.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -414,14 +414,14 @@ class EODataCube(object):
         inventory = copy.deepcopy(self.inventory)
         inventory_sorted = inventory.sort_values(by=name, ascending=ascending)
 
-        if in_place:
+        if inplace:
             self.inventory = inventory_sorted
             return self
         else:
             return self.from_inventory(inventory=inventory_sorted, grid=self.grid)
 
     @_set_status('changed')
-    def filter_by_dimension(self, values, expressions=None, name="time", in_place=False):
+    def filter_by_dimension(self, values, expressions=None, name="time", inplace=False):
         """
         Filters the data cube according to the given extents and returns a (new) data cube.
 
@@ -440,7 +440,7 @@ class EODataCube(object):
             - '<':  smaller than
         name : str, optional
             Name of the dimension.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -450,10 +450,10 @@ class EODataCube(object):
             Filtered EODataCube object.
         """
 
-        return self.__filter_by_dimension(values, expressions=expressions, name=name, in_place=in_place, split=False)
+        return self.__filter_by_dimension(values, expressions=expressions, name=name, inplace=inplace, split=False)
 
     @_set_status('changed')
-    def filter_spatially_by_tilename(self, tilenames, dimension_name="tile", in_place=False, use_grid=True):
+    def filter_spatially_by_tilename(self, tilenames, dimension_name="tile", inplace=False, use_grid=True):
         """
         Spatially filters the data cube by tile names.
 
@@ -463,7 +463,7 @@ class EODataCube(object):
             Tile names corresponding to a grid and/or the inventory.
         dimension_name : str, optional
             Name of the tile/spatial dimension in the inventory.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
         use_grid : bool
@@ -485,16 +485,16 @@ class EODataCube(object):
                 for tilename in tilenames:
                     if tilename not in available_tilenames:
                         raise TileNotAvailable(tilename)
-                return self.filter_by_dimension(tilenames, name=dimension_name, in_place=in_place)
+                return self.filter_by_dimension(tilenames, name=dimension_name, inplace=inplace)
             else:
                 print('No grid is provided to extract tile information.')
                 return self
         else:
-            return self.filter_by_dimension(tilenames, name=dimension_name, in_place=in_place)
+            return self.filter_by_dimension(tilenames, name=dimension_name, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
-    def filter_spatially_by_geom(self, geom, sref=None, dimension_name="tile", in_place=False):
+    def filter_spatially_by_geom(self, geom, sref=None, dimension_name="tile", inplace=False):
         """
         Spatially filters the data cube by a bounding box or a geometry.
 
@@ -508,7 +508,7 @@ class EODataCube(object):
             Spatial reference of the given region of interest `geom`.
         dimension_name : str, optional
             Name of the tile/spatial dimension in the inventory.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -523,14 +523,14 @@ class EODataCube(object):
         if self.grid:
             ftilenames = self.grid.search_tiles_over_geometry(geom_roi)
             tilenames = [ftilename.split('_')[1] for ftilename in ftilenames]
-            return self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, in_place=in_place,
+            return self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, inplace=inplace,
                                                      use_grid=False)
         elif 'geometry' in self.inventory.keys():
             # get spatial reference of data
             geom_roi = self.align_geom(geom_roi)
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
             inventory = self.inventory[self.inventory.intersects(geom_roi)]
-            return self.__assign_inventory(inventory, in_place=in_place)
+            return self.__assign_inventory(inventory, inplace=inplace)
         else:
             return self
 
@@ -1025,7 +1025,7 @@ class EODataCube(object):
 
     @_set_status('changed')
     @_check_inventory
-    def intersect(self, dc_other, on_dimension=None, in_place=False):
+    def intersect(self, dc_other, on_dimension=None, inplace=False):
         """
         Intersects this data cube with another data cube. This is equal to an SQL INNER JOIN operation.
         In other words:
@@ -1038,7 +1038,7 @@ class EODataCube(object):
             Data cube to intersect with.
         on_dimension : str, optional
             Dimension name to intersect on, meaning that only equal entries along this dimension will be retained.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default is False).
 
@@ -1049,11 +1049,11 @@ class EODataCube(object):
         """
 
         dc_intersected = intersect_datacubes([self, dc_other], on_dimension=on_dimension)
-        return self.__assign_inventory(dc_intersected.inventory, in_place=in_place)
+        return self.__assign_inventory(dc_intersected.inventory, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
-    def unite(self, dc_other, in_place=False):
+    def unite(self, dc_other, inplace=False):
         """
         Unites this data cube with respect to another data cube. This is equal to an SQL UNION operation.
         In other words:
@@ -1065,7 +1065,7 @@ class EODataCube(object):
         ----------
         dc_other : EODataCube
             Data cube to unite with.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default is False).
 
@@ -1076,10 +1076,10 @@ class EODataCube(object):
         """
 
         dc_united = unite_datacubes([self, dc_other])
-        return self.__assign_inventory(dc_united.inventory, in_place=in_place)
+        return self.__assign_inventory(dc_united.inventory, inplace=inplace)
 
     @_set_status('changed')
-    def align_dimension(self, dc_other, name, in_place=False):
+    def align_dimension(self, dc_other, name, inplace=False):
         """
         Aligns this data cube with another data cube along the specified dimension `name`.
 
@@ -1089,7 +1089,7 @@ class EODataCube(object):
             Data cube to align with.
         name : str
             Name of the dimension, which is used for aligning/filtering the values for all data cubes.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -1111,7 +1111,7 @@ class EODataCube(object):
         idxs = idxs[idxs != -1]
         if len(idxs) > 0:
             inventory = self.inventory.iloc[idxs].reset_index(drop=True)
-            return self.__assign_inventory(inventory, in_place=in_place)
+            return self.__assign_inventory(inventory, inplace=inplace)
         else:
             print('No common dimension values found. Original data cube is returned.')
             return self
@@ -1262,11 +1262,6 @@ class EODataCube(object):
         else:
             return None, None
 
-    # def __crop_geom_to_tile_boundary(self):
-    #
-    #     ogr_geom = any_geom2ogr_geom
-    #     return
-
     def __io_class(self, file_type):
         """
         Looks up appropriate file handler/IO class for a given file type.
@@ -1339,7 +1334,7 @@ class EODataCube(object):
             if len(uni_vals) > 1:
                 raise SpatialInconsistencyError()
 
-    def __inventory_from_filepaths(self, filepaths, dimensions=None, smart_filename_creator=None):
+    def __inventory_from_filepaths(self, filepaths, dimensions=None, smart_filename_class=None):
         """
         Creates GeoDataFrame (`inventory`) based on all filepaths.
         Each filepath/filename is translated to a SmartFilename object using a translation function
@@ -1352,8 +1347,8 @@ class EODataCube(object):
         dimensions : list of str, optional
             List of filename parts to use as dimensions. The strings have to match with the keys of the `SmartFilename`
             fields definition.
-        smart_filename_creator : function, optional
-            Translates a filepath/filename to a SmartFilename object.
+        smart_filename_class : geopathfinder.file_naming.SmartFilename, optional
+            `SmartFilename` class to handle the interpretation of filenames.
         """
 
         inventory = OrderedDict()
@@ -1364,12 +1359,11 @@ class EODataCube(object):
             n = len(inventory['filepath'])
             local_inventory = OrderedDict()
             local_inventory['filepath'] = [filepath]
-            ext = os.path.splitext(filepath)[1]
 
             # get information from filename
             smart_filename = None
             try:
-                smart_filename = smart_filename_creator(os.path.basename(filepath), ext=ext, convert=True)
+                smart_filename = smart_filename_class.from_filename(os.path.basename(filepath), convert=True)
             except:
                 pass
 
@@ -1402,7 +1396,7 @@ class EODataCube(object):
         self.inventory = GeoDataFrame(inventory)
 
     @_check_inventory
-    def __filter_by_dimension(self, values, expressions=None, name="time", split=False, in_place=False):
+    def __filter_by_dimension(self, values, expressions=None, name="time", split=False, inplace=False):
         """
         Filters the data cube according to the given extent and returns a new data cube.
 
@@ -1424,7 +1418,7 @@ class EODataCube(object):
         split : boolean, optional
             If true, a list of data cubes will be returned according to the length of the input data
             (i.e. `values` and `expressions`)(default value is False).
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -1471,9 +1465,9 @@ class EODataCube(object):
             return eodcs
         else:
             filtered_inventory = pd.concat(filtered_inventories, ignore_index=True)
-            return self.__assign_inventory(filtered_inventory, in_place=in_place)
+            return self.__assign_inventory(filtered_inventory, inplace=inplace)
 
-    def __assign_inventory(self, inventory, in_place=True):
+    def __assign_inventory(self, inventory, inplace=True):
         """
         Helper method for either create a new data cube or overwrite the old data cube with the given inventory.
 
@@ -1481,7 +1475,7 @@ class EODataCube(object):
         ----------
         inventory : GeoDataFrame
             Data cube inventory.
-        in_place : boolean, optional
+        inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
 
@@ -1490,7 +1484,7 @@ class EODataCube(object):
         EODataCube
         """
 
-        if in_place:
+        if inplace:
             self.inventory = inventory
             return None
         else:
@@ -1512,12 +1506,10 @@ class EODataCube(object):
 
         filepaths = copy.deepcopy(self.filepaths)
         grid = self.grid
-        smart_filename_creator = self.smart_filename_creator
         dimensions = copy.deepcopy(self.dimensions)
         inventory = copy.deepcopy(self.inventory)
 
-        return EODataCube(filepaths=filepaths, grid=grid, smart_filename_creator=smart_filename_creator,
-                          dimensions=dimensions, inventory=inventory)
+        return EODataCube(filepaths=filepaths, grid=grid, dimensions=dimensions, inventory=inventory)
 
     def __getitem__(self, dimension_name):
         """

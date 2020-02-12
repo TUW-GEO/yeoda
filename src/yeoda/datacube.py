@@ -178,11 +178,10 @@ class EODataCube(object):
             self.__inventory_from_filepaths(filepaths, dimensions=dimensions,
                                             smart_filename_class=smart_filename_class)
 
-        dimensions = [] if dimensions is None else dimensions
         self.grid = None
         if grid:
             self.grid = grid
-        elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()) and ('geometry' in dimensions):
+        elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()):
             geometries = [self.__geometry_from_file(filepath) for filepath in self.filepaths]
             self.add_dimension('geometry', geometries, inplace=True)
 
@@ -521,6 +520,10 @@ class EODataCube(object):
         geom_roi = any_geom2ogr_geom(geom, osr_sref=sref)
 
         if self.grid:
+            # pytileproj expects latlon polygon
+            sref_lonlat = osr.SpatialReference()
+            sref_lonlat.ImportFromEPSG(4326)
+            geom_roi.TransformTo(sref_lonlat)
             ftilenames = self.grid.search_tiles_over_geometry(geom_roi)
             tilenames = [ftilename.split('_')[1] for ftilename in ftilenames]
             return self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, inplace=inplace,
@@ -582,15 +585,16 @@ class EODataCube(object):
         monthly_eodcs = []
         for yearly_eodc in yearly_eodcs:
             if months is not None:
+                yearly_months = months
                 if not isinstance(months, list):
-                    months = [months]
+                    yearly_months = [yearly_months]
                 # initialise empty dict keeping track of the months
                 timestamps_months = {}
-                for month in months:
+                for month in yearly_months:
                     timestamps_months[month] = []
 
                 for timestamp in yearly_eodc.inventory[name]:
-                    if timestamp.month in months:
+                    if timestamp.month in yearly_months:
                         timestamps_months[timestamp.month].append(timestamp)
             else:
                 sort = True
@@ -601,13 +605,13 @@ class EODataCube(object):
 
                     timestamps_months[timestamp.month].append(timestamp)
 
-                months = timestamps_months.keys()
+                yearly_months = timestamps_months.keys()
 
             if sort:
-                months = sorted(months)  # sort in ascending order
+                yearly_months = sorted(yearly_months)  # sort in ascending order
             values = []
-            expressions = [(">=", "<=")] * len(months)
-            for month in months:
+            expressions = [(">=", "<=")] * len(yearly_months)
+            for month in yearly_months:
                 min_timestamp = min(timestamps_months[month])
                 max_timestamp = max(timestamps_months[month])
                 values.append((min_timestamp, max_timestamp))

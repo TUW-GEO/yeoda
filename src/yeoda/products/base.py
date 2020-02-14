@@ -93,8 +93,12 @@ class ProductDataCube(EODataCube):
         if 'tile_name' not in dimensions:
             dimensions.append('tile_name')
 
+        # retrieve remaining datacube attributes
+        sdim_name = kwargs.get('sdim_name', 'tile')
+        tdim_name = kwargs.get('tdim_name', 'time')
+
         super().__init__(inventory=inventory, filepaths=filepaths, dimensions=dimensions,
-                         smart_filename_class=SgrtFilename, grid=grid)
+                         smart_filename_class=SgrtFilename, grid=grid, sdim_name=sdim_name, tdim_name=tdim_name)
 
         # filter variable names
         if var_names is not None:

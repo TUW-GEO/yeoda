@@ -136,7 +136,7 @@ class EODataCube(object):
     """
 
     def __init__(self, filepaths=None, grid=None, smart_filename_class=None, dimensions=None, inventory=None,
-                 io_map=None):
+                 io_map=None, sdim_name="tile", tdim_name="time"):
         """
         Constructor of the `EODataCube` class.
 
@@ -157,12 +157,17 @@ class EODataCube(object):
         io_map : dictionary, optional
             Map that represents the relation of an EO file type (e.g. GeoTIFF) with an appropriate reader
             (e.g. `GeoTiffFile` from veranda).
+        sdim_name : str, optional
+            Name of the spatial dimension (default is 'tile'). If no grid is given, then the spatial dimension name
+            will be 'geometry'.
+        tdim_name : str, optional
+            Name of the temporal dimension (default is 'time').
         """
 
         # initialise simple class variables
-        #self.smart_filename_class = smart_filename_class
         self._ds = None  # data set pointer
         self.status = None
+        self.tdim_name = tdim_name
 
         # initialise IO classes responsible for reading and writing
         if io_map is not None:
@@ -181,20 +186,18 @@ class EODataCube(object):
         self.grid = None
         if grid:
             self.grid = grid
+            self.sdim_name = sdim_name
         elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()):
             geometries = [self.__geometry_from_file(filepath) for filepath in self.filepaths]
             self.add_dimension('geometry', geometries, inplace=True)
+            self.sdim_name = sdim_name if sdim_name in self.dimensions else "geometry"
 
     @property
     def filepaths(self):
         """
-        Returns list of file paths stored in the inventory.
-
-        Returns
-        -------
-        list
-            List of file paths.
+        list : List of file paths.
         """
+
         if self.inventory is not None:
             return list(self.inventory['filepath'])
         else:
@@ -203,12 +206,7 @@ class EODataCube(object):
     @property
     def dimensions(self):
         """
-        Returns the dimensions of the data cube.
-
-        Returns
-        -------
-        list
-            List of inventory keys/dimensions of the data cube.
+        list : List of inventory keys/dimensions of the data cube.
         """
 
         if self.inventory is not None:
@@ -219,22 +217,14 @@ class EODataCube(object):
         else:
             return None
 
-    def boundary(self, spatial_dim_name='tile'):
+    @property
+    def boundary(self):
+        """
+        shapely.geometry : Shapely polygon representing the boundary of the data cube or `None` if no files are
+        contained in the data cube.
         """
 
-        Parameters
-        ----------
-        spatial_dim_name: str, optional
-            Name of the spatial dimension (default: 'tile').
-
-        Returns
-        -------
-        shapely.geometry
-            Shapely polygon representing the boundary of the data cube or `None` if no files are contained in the data
-            cube.
-        """
-
-        self.__check_spatial_consistency(spatial_dim_name=spatial_dim_name)
+        self.__check_spatial_consistency()
         if self.filepaths is not None:
             filepath = self.filepaths[0]
             return self.__geometry_from_file(filepath)
@@ -452,7 +442,7 @@ class EODataCube(object):
         return self.__filter_by_dimension(values, expressions=expressions, name=name, inplace=inplace, split=False)
 
     @_set_status('changed')
-    def filter_spatially_by_tilename(self, tilenames, dimension_name="tile", inplace=False, use_grid=True):
+    def filter_spatially_by_tilename(self, tilenames, inplace=False, use_grid=True):
         """
         Spatially filters the data cube by tile names.
 
@@ -460,8 +450,6 @@ class EODataCube(object):
         ----------
         tilenames : list of str
             Tile names corresponding to a grid and/or the inventory.
-        dimension_name : str, optional
-            Name of the tile/spatial dimension in the inventory.
         inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
@@ -484,16 +472,16 @@ class EODataCube(object):
                 for tilename in tilenames:
                     if tilename not in available_tilenames:
                         raise TileNotAvailable(tilename)
-                return self.filter_by_dimension(tilenames, name=dimension_name, inplace=inplace)
+                return self.filter_by_dimension(tilenames, name=self.sdim_name, inplace=inplace)
             else:
                 print('No grid is provided to extract tile information.')
                 return self
         else:
-            return self.filter_by_dimension(tilenames, name=dimension_name, inplace=inplace)
+            return self.filter_by_dimension(tilenames, name=self.sdim_name, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
-    def filter_spatially_by_geom(self, geom, sref=None, dimension_name="tile", inplace=False):
+    def filter_spatially_by_geom(self, geom, sref=None, inplace=False):
         """
         Spatially filters the data cube by a bounding box or a geometry.
 
@@ -505,8 +493,6 @@ class EODataCube(object):
             georeferenced polygon.
         sref : osr.SpatialReference, optional
             Spatial reference of the given region of interest `geom`.
-        dimension_name : str, optional
-            Name of the tile/spatial dimension in the inventory.
         inplace : boolean, optional
             If true, the current class instance will be altered.
             If false, a new class instance will be returned (default value is False).
@@ -526,8 +512,7 @@ class EODataCube(object):
             geom_roi.TransformTo(sref_lonlat)
             ftilenames = self.grid.search_tiles_over_geometry(geom_roi)
             tilenames = [ftilename.split('_')[1] for ftilename in ftilenames]
-            return self.filter_spatially_by_tilename(tilenames, dimension_name=dimension_name, inplace=inplace,
-                                                     use_grid=False)
+            return self.filter_spatially_by_tilename(tilenames, inplace=inplace, use_grid=False)
         elif 'geometry' in self.inventory.keys():
             # get spatial reference of data
             geom_roi = self.align_geom(geom_roi)
@@ -564,7 +549,7 @@ class EODataCube(object):
 
         return self.__filter_by_dimension(values, expressions=expressions, name=name, split=True)
 
-    def split_monthly(self, name='time', months=None):
+    def split_monthly(self, months=None):
         """
         Separates the data cube into months.
 
@@ -581,7 +566,7 @@ class EODataCube(object):
         """
 
         sort = False
-        yearly_eodcs = self.split_yearly(name=name)
+        yearly_eodcs = self.split_yearly()
         monthly_eodcs = []
         for yearly_eodc in yearly_eodcs:
             if months is not None:
@@ -593,13 +578,13 @@ class EODataCube(object):
                 for month in yearly_months:
                     timestamps_months[month] = []
 
-                for timestamp in yearly_eodc.inventory[name]:
+                for timestamp in yearly_eodc.inventory[self.tdim_name]:
                     if timestamp.month in yearly_months:
                         timestamps_months[timestamp.month].append(timestamp)
             else:
                 sort = True
                 timestamps_months = {}
-                for timestamp in yearly_eodc.inventory[name]:
+                for timestamp in yearly_eodc.inventory[self.tdim_name]:
                     if timestamp.month not in timestamps_months.keys():
                         timestamps_months[timestamp.month] = []
 
@@ -616,11 +601,11 @@ class EODataCube(object):
                 max_timestamp = max(timestamps_months[month])
                 values.append((min_timestamp, max_timestamp))
 
-            monthly_eodcs.extend(self.split_by_dimension(values, expressions, name=name))
+            monthly_eodcs.extend(self.split_by_dimension(values, expressions, name=self.tdim_name))
 
         return monthly_eodcs
 
-    def split_yearly(self, name='time', years=None):
+    def split_yearly(self, years=None):
         """
         Separates the data cube into years.
 
@@ -645,13 +630,13 @@ class EODataCube(object):
             for year in years:
                 timestamps_years[year] = []
 
-            for timestamp in self.inventory[name]:
+            for timestamp in self.inventory[self.tdim_name]:
                 if timestamp.year in years:
                     timestamps_years[timestamp.year].append(timestamp)
         else:
             sort = True
             timestamps_years = {}
-            for timestamp in self.inventory[name]:
+            for timestamp in self.inventory[self.tdim_name]:
                 if timestamp.year not in timestamps_years.keys():
                     timestamps_years[timestamp.year] = []
 
@@ -668,11 +653,10 @@ class EODataCube(object):
             max_timestamp = max(timestamps_years[year])
             values.append((min_timestamp, max_timestamp))
 
-        return self.split_by_dimension(values, expressions, name=name)
+        return self.split_by_dimension(values, expressions, name=self.tdim_name)
 
     @_set_status('stable')
-    def load_by_geom(self, geom, sref=None, band='1', spatial_dim_name="tile", temporal_dim_name="time",
-                     apply_mask=False, dtype="xarray", origin='ur'):
+    def load_by_geom(self, geom, sref=None, band='1', apply_mask=False, dtype="xarray", origin='ur'):
         """
         Loads data according to a given geometry.
 
@@ -686,10 +670,6 @@ class EODataCube(object):
             Spatial reference of the given region of interest `geom`.
         band : int or str, optional
             Band number or name (default is 1).
-        spatial_dim_name : str, optional
-            Name of the spatial dimension (default: 'tile').
-        temporal_dim_name : str, optional
-            Name of the temporal dimension (default: 'time').
         apply_mask : bool, optional
             If true, a numpy mask array with a mask excluding (=1) all pixels outside `geom` (=0) will be created
             (default is True).
@@ -716,10 +696,10 @@ class EODataCube(object):
             return None
 
         if self.grid:
-            if spatial_dim_name not in self.dimensions:
-                raise DimensionUnkown(spatial_dim_name)
+            if self.sdim_name not in self.dimensions:
+                raise DimensionUnkown(self.sdim_name)
             this_sref = self.grid.core.projection.osr_spref
-            tilenames = list(self.inventory[spatial_dim_name])
+            tilenames = list(self.inventory[self.sdim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
@@ -737,7 +717,7 @@ class EODataCube(object):
             geom_roi = geometry.transform_geometry(geom_roi, this_sref)
 
         # clip region of interest to tile boundary
-        boundary_ogr = ogr.CreateGeometryFromWkt(self.boundary(spatial_dim_name=spatial_dim_name).wkt)
+        boundary_ogr = ogr.CreateGeometryFromWkt(self.boundary.wkt)
         geom_roi = geom_roi.Intersection(boundary_ogr)
         if geom_roi.ExportToWkt() == 'GEOMETRYCOLLECTION EMPTY':
             raise Exception('The given geometry does not intersect with the tile boundaries.')
@@ -791,11 +771,10 @@ class EODataCube(object):
         else:
             raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
+        return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
 
     @_set_status('stable')
-    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', spatial_dim_name="tile",
-                       temporal_dim_name="time", dtype="xarray", origin="ur"):
+    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', dtype="xarray", origin="ur"):
         """
         Loads data according to given pixel numbers, i.e. the row and column numbers and optionally a certain
         pixel window (`row_size` and `col_size`).
@@ -844,9 +823,9 @@ class EODataCube(object):
             cols = [cols]
 
         if self.grid:
-            if spatial_dim_name not in self.dimensions:
-                raise DimensionUnkown(spatial_dim_name)
-            tilenames = list(self.inventory[spatial_dim_name])
+            if self.sdim_name not in self.dimensions:
+                raise DimensionUnkown(self.sdim_name)
+            tilenames = list(self.inventory[self.sdim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
@@ -898,11 +877,10 @@ class EODataCube(object):
             else:
                 raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
 
     @_set_status('stable')
-    def load_by_coords(self, xs, ys, sref=None, band='1', spatial_dim_name="tile", temporal_dim_name="time",
-                       dtype="xarray", origin="ur"):
+    def load_by_coords(self, xs, ys, sref=None, band='1', dtype="xarray", origin="ur"):
         """
         Loads data as a 1-D array according to a given coordinate.
 
@@ -948,10 +926,10 @@ class EODataCube(object):
             ys = [ys]
 
         if self.grid is not None:
-            if spatial_dim_name not in self.dimensions:
-                raise DimensionUnkown(spatial_dim_name)
+            if self.sdim_name not in self.dimensions:
+                raise DimensionUnkown(self.sdim_name)
             this_sref = self.grid.core.projection.osr_spref
-            tilenames = list(self.inventory[spatial_dim_name])
+            tilenames = list(self.inventory[self.sdim_name])
             if len(list(set(tilenames))) > 1:
                 raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
             tilename = tilenames[0]
@@ -991,7 +969,7 @@ class EODataCube(object):
                 raise LoadingDataError()
             data.append(data_i)
 
-        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, temporal_dim_name=temporal_dim_name)
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
 
     def encode(self, data):
         """
@@ -1162,7 +1140,7 @@ class EODataCube(object):
 
         self._ds.close()
 
-    def __convert_dtype(self, data, dtype, xs=None, ys=None, temporal_dim_name='time', band=1):
+    def __convert_dtype(self, data, dtype, xs=None, ys=None, band=1):
         """
         Converts `data` into an array-like object defined by `dtype`. It supports NumPy arrays, Xarray arrays and
         Pandas data frames.
@@ -1179,8 +1157,6 @@ class EODataCube(object):
             List of world system coordinates in X direction.
         ys : list, optional
             List of world system coordinates in Y direction.
-        temporal_dim_name : str, optional
-            Name of the temporal dimension (default: 'time').
         band : int or str, optional
             Band number or name (default is 1).
 
@@ -1191,7 +1167,7 @@ class EODataCube(object):
         """
 
         if dtype == "xarray":
-            timestamps = self[temporal_dim_name]
+            timestamps = self[self.tdim_name]
             if isinstance(data, list) and isinstance(data[0], np.ndarray):
                 ds = []
                 for i, entry in enumerate(data):
@@ -1201,15 +1177,16 @@ class EODataCube(object):
                         x = [x]
                     if not isinstance(y, list):
                         y = [y]
-                    xr_ar = xr.DataArray(entry, coords={'time': timestamps, 'y': y, 'x': x},
-                                         dims=['time', 'y', 'x'])
+                    xr_ar = xr.DataArray(entry, coords={self.tdim_name: timestamps, 'y': y, 'x': x},
+                                         dims=[self.tdim_name, 'y', 'x'])
                     ds.append(xr.Dataset(data_vars={band: xr_ar}))
                 converted_data = xr.merge(ds)
             elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
                 converted_data = xr.merge(data)
                 converted_data.attrs = data[0].attrs
             elif isinstance(data, np.ndarray):
-                xr_ar = xr.DataArray(data, coords={'time': timestamps, 'y': ys, 'x': xs}, dims=['time', 'y', 'x'])
+                xr_ar = xr.DataArray(data, coords={self.tdim_name: timestamps, 'y': ys, 'x': xs},
+                                     dims=[self.tdim_name, 'y', 'x'])
                 converted_data = xr.Dataset(data_vars={band: xr_ar})
             elif isinstance(data, xr.Dataset):
                 converted_data = data
@@ -1232,8 +1209,7 @@ class EODataCube(object):
             else:
                 raise DataTypeUnknown(type(data), dtype)
         elif dtype == "dataframe":
-            xr_ds = self.__convert_dtype(data, 'xarray', xs=xs, ys=ys, temporal_dim_name=temporal_dim_name,
-                                         band=band)
+            xr_ds = self.__convert_dtype(data, 'xarray', xs=xs, ys=ys, band=band)
             converted_data = xr_ds.to_dataframe()
         else:
             raise DataTypeUnknown(type(data), dtype)
@@ -1315,19 +1291,14 @@ class EODataCube(object):
 
         return shapely.wkt.loads(boundary_geom.ExportToWkt())
 
-    def __check_spatial_consistency(self, spatial_dim_name='tile'):
+    def __check_spatial_consistency(self):
         """
         Checks if there are multiple tiles/file extents present in the data cube.
         If so, a `SpatialInconsistencyError` is raised.
-
-        Parameters
-        ----------
-        spatial_dim_name: str, optional
-            Name of the spatial dimension (default: 'tile').
         """
 
-        if spatial_dim_name in self.dimensions:
-            geoms = self[spatial_dim_name]
+        if self.sdim_name in self.dimensions:
+            geoms = self[self.sdim_name]
             try:  # try apply unique function to DataSeries
                 uni_vals = geoms.unique()
             except:

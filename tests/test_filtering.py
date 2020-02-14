@@ -136,9 +136,10 @@ class FilteringTester(unittest.TestCase):
     def test_filter_spatially_by_tilename(self):
         """ Creates a `PreprocessedDataCube` and tests filtering of tile names. """
 
-        dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol', 'tile_name'])
+        dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol', 'tile_name'],
+                                  sdim_name="tile_name")
         assert len(set(dc['tile_name'])) == 2
-        dc.filter_spatially_by_tilename("E042N012T6", dimension_name='tile_name', inplace=True)
+        dc.filter_spatially_by_tilename("E042N012T6", inplace=True)
         assert len(set(dc['tile_name'])) == 1
         assert list(set(dc['tile_name']))[0] == "E042N012T6"
 
@@ -148,10 +149,11 @@ class FilteringTester(unittest.TestCase):
         geometry/region of interest.
         """
 
-        dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol', 'tile_name'])
+        dc = PreprocessedDataCube(self.data_dirpath, sres=500, dimensions=['time', 'var_name', 'pol', 'tile_name'],
+                                  sdim_name="tile_name")
         bbox, sref = roi_test()
         assert len(set(dc['tile_name'])) == 2
-        dc.filter_spatially_by_geom(bbox, sref=sref, dimension_name='tile_name', inplace=True)
+        dc.filter_spatially_by_geom(bbox, sref=sref, inplace=True)
         assert len(set(dc['tile_name'])) == 1
         assert list(set(dc['tile_name']))[0] == "E042N012T6"
 
@@ -163,6 +165,7 @@ class FilteringTester(unittest.TestCase):
         dc.filter_by_metadata({'direction': 'D'}, inplace=True)
         assert len(set(dc['orbit_direction'])) == 1
         assert list(set(dc['orbit_direction']))[0] == "D"
+
 
 if __name__ == '__main__':
     unittest.main()

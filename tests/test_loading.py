@@ -81,12 +81,12 @@ class LoadingTester(unittest.TestCase):
         """
 
         dc = EODataCube(filepaths=filepaths, smart_filename_class=SgrtFilename,
-                        dimensions=['time', 'var_name', 'pol', 'tile_name', 'orbit_direction'])
+                        dimensions=['time', 'var_name', 'pol', 'tile_name', 'orbit_direction'], sdim_name="tile_name")
 
         dc.filter_by_dimension('VV', name='pol', inplace=True)
         dc.filter_by_dimension('SIG0', name='var_name', inplace=True)
         dc.filter_by_dimension('D', name='orbit_direction', inplace=True)
-        dc.filter_spatially_by_tilename('E042N012T6', dimension_name='tile_name', inplace=True, use_grid=False)
+        dc.filter_spatially_by_tilename('E042N012T6', inplace=True, use_grid=False)
 
         return dc
 
@@ -126,12 +126,11 @@ class LoadingCoordsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.gt_filepaths)
 
-        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dtype='numpy')
         assert (self.ref_np_ar == data).all()
 
         ref_data_list = [self.ref_np_ar, self.ref_np_ar]
-        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
-                                 spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref, dtype='numpy')
         assert (ref_data_list[0] == data[0]).all() & (ref_data_list[1] == data[1]).all()
 
     def test_load_gt2xarray_by_coord(self):
@@ -139,14 +138,12 @@ class LoadingCoordsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.gt_filepaths)
 
-        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, spatial_dim_name='tile_name', dtype='xarray',
-                                 origin='c')
+        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dtype='xarray', origin='c')
         data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds.equals(data)
 
         ref_data_list = [self.ref_xr_ds, self.ref_xr_ds]
-        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
-                                 spatial_dim_name='tile_name', dtype='xarray', origin='c')
+        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref, dtype='xarray', origin='c')
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
 
     def test_load_gt2dataframe_by_coord(self):
@@ -154,14 +151,13 @@ class LoadingCoordsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.gt_filepaths)
 
-        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, spatial_dim_name='tile_name', dtype='dataframe',
-                                 origin='c')
+        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dtype='dataframe', origin='c')
         data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df.equals(data)
 
         ref_data_list = [self.ref_pd_df, self.ref_pd_df]
-        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
-                                 spatial_dim_name='tile_name', dtype='dataframe', origin='c')
+        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref, dtype='dataframe',
+                                 origin='c')
         data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
 
@@ -170,13 +166,12 @@ class LoadingCoordsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.nc_filepaths)
 
-        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dtype='numpy')
         assert (self.ref_np_ar == data).all()
         dc.close()
 
         ref_data_list = [self.ref_np_ar, self.ref_np_ar]
-        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
-                                 spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref, dtype='numpy')
         assert (ref_data_list[0] == data[0]).all() & (ref_data_list[1] == data[1]).all()
         dc.close()
 
@@ -185,14 +180,12 @@ class LoadingCoordsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.nc_filepaths)
 
-        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, spatial_dim_name='tile_name', dtype='xarray',
-                                 origin='c')
+        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dtype='xarray', origin='c')
         assert self.ref_xr_ds.equals(data)
         dc.close()
 
         ref_data_list = [self.ref_xr_ds, self.ref_xr_ds]
-        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
-                                 spatial_dim_name='tile_name', dtype='xarray', origin='c')
+        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref, dtype='xarray', origin='c')
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
         dc.close()
 
@@ -201,14 +194,13 @@ class LoadingCoordsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.nc_filepaths)
 
-        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, spatial_dim_name='tile_name', dtype='dataframe',
-                                 origin='c')
+        data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dtype='dataframe', origin='c')
         assert self.ref_pd_df.equals(data)
         dc.close()
 
         ref_data_list = [self.ref_pd_df, self.ref_pd_df]
-        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref,
-                                 spatial_dim_name='tile_name', dtype='dataframe', origin='c')
+        data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref, dtype='dataframe',
+                                 origin='c')
         assert ref_data_list[0].equals(data) & ref_data_list[1].equals(data)
         dc.close()
 
@@ -267,11 +259,10 @@ class LoadingPixelsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.gt_filepaths)
 
-        data = dc.load_by_pixels(self.row, self.col, spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_pixels(self.row, self.col, dtype='numpy')
         assert (self.ref_np_ar == data).all()
 
-        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
-                                 spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='numpy')
         assert (self.ref_np_ar_area == data).all()
 
     def test_load_gt2xarray_by_pixels(self):
@@ -279,12 +270,12 @@ class LoadingPixelsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.gt_filepaths)
 
-        data = dc.load_by_pixels(self.row, self.col, spatial_dim_name='tile_name', dtype='xarray', origin='c')
+        data = dc.load_by_pixels(self.row, self.col, dtype='xarray', origin='c')
         data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds.equals(data)
 
-        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
-                                 spatial_dim_name='tile_name', dtype='xarray', origin='c')
+        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='xarray',
+                                 origin='c')
         data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds_area.equals(data)
 
@@ -293,13 +284,13 @@ class LoadingPixelsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.gt_filepaths)
 
-        data = dc.load_by_pixels(self.row, self.col, spatial_dim_name='tile_name', dtype='dataframe', origin='c')
+        data = dc.load_by_pixels(self.row, self.col, dtype='dataframe', origin='c')
         # convert to float
         data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df.equals(data)
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
-                                 spatial_dim_name='tile_name', dtype='dataframe', origin='c')
+                                 dtype='dataframe', origin='c')
         data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df_area.equals(data)
 
@@ -308,12 +299,11 @@ class LoadingPixelsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.nc_filepaths)
 
-        data = dc.load_by_pixels(self.row, self.col, spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_pixels(self.row, self.col, dtype='numpy')
         assert (self.ref_np_ar == data).all()
         dc.close()
 
-        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
-                                 spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='numpy')
         assert (self.ref_np_ar_area == data).all()
         dc.close()
 
@@ -322,13 +312,13 @@ class LoadingPixelsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.nc_filepaths)
 
-        data = dc.load_by_pixels(self.row, self.col, spatial_dim_name='tile_name', dtype='xarray', origin='c')
+        data = dc.load_by_pixels(self.row, self.col, dtype='xarray', origin='c')
         data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds.equals(data)
         dc.close()
 
-        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
-                                 spatial_dim_name='tile_name', dtype='xarray', origin='c')
+        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='xarray',
+                                 origin='c')
         data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds_area.equals(data)
         dc.close()
@@ -338,13 +328,13 @@ class LoadingPixelsTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.nc_filepaths)
 
-        data = dc.load_by_pixels(self.row, self.col, spatial_dim_name='tile_name', dtype='dataframe', origin='c')
+        data = dc.load_by_pixels(self.row, self.col, dtype='dataframe', origin='c')
         data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df.equals(data)
         dc.close()
 
-        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size,
-                                 spatial_dim_name='tile_name', dtype='dataframe', origin='c')
+        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='dataframe',
+                                 origin='c')
         data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df_area.equals(data)
         dc.close()
@@ -415,14 +405,14 @@ class LoadingGeomTester(LoadingTester):
         """ Tests loading of a Numpy array from GeoTIFF files by a bounding box. """
 
         dc = self._create_loadable_dc(self.gt_filepaths)
-        data = dc.load_by_geom(self.bbox, spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_geom(self.bbox, dtype='numpy')
         assert (self.ref_np_ar_area == data).all()
 
     def test_load_gt2xarray_by_geom(self):
         """ Tests loading of an xarray array from GeoTIFF files by a bounding box. """
 
         dc = self._create_loadable_dc(self.gt_filepaths)
-        data = dc.load_by_geom(self.bbox, spatial_dim_name='tile_name', dtype='xarray', origin='c')
+        data = dc.load_by_geom(self.bbox, dtype='xarray', origin='c')
         data['1'].data = data['1'].data.astype(float)  # convert to float for comparison
         assert self.ref_xr_ds_area.equals(data)
 
@@ -430,7 +420,7 @@ class LoadingGeomTester(LoadingTester):
         """ Tests loading of a Pandas data frame from GeoTIFF files by a bounding box. """
 
         dc = self._create_loadable_dc(self.gt_filepaths)
-        data = dc.load_by_geom(self.bbox, spatial_dim_name='tile_name', dtype='dataframe', origin='c')
+        data = dc.load_by_geom(self.bbox, dtype='dataframe', origin='c')
         data['1'] = data['1'].astype(float)  # convert to float for comparison
         assert self.ref_pd_df_area.equals(data)
 
@@ -438,7 +428,7 @@ class LoadingGeomTester(LoadingTester):
         """ Tests loading of a Numpy array from NetCDF files by a bounding box. """
 
         dc = self._create_loadable_dc(self.nc_filepaths)
-        data = dc.load_by_geom(self.bbox, spatial_dim_name='tile_name', dtype='numpy')
+        data = dc.load_by_geom(self.bbox, dtype='numpy')
         assert (self.ref_np_ar_area == data).all()
         dc.close()
 
@@ -446,7 +436,7 @@ class LoadingGeomTester(LoadingTester):
         """ Tests loading of an xarray array from NetCDF files by a bounding box. """
 
         dc = self._create_loadable_dc(self.nc_filepaths)
-        data = dc.load_by_geom(self.bbox, spatial_dim_name='tile_name', dtype='xarray', origin='c')
+        data = dc.load_by_geom(self.bbox, dtype='xarray', origin='c')
         assert self.ref_xr_ds_area.equals(data)
         dc.close()
 
@@ -454,7 +444,7 @@ class LoadingGeomTester(LoadingTester):
         """ Tests loading of a Pandas data frame from NetCDF files by a bounding box. """
 
         dc = self._create_loadable_dc(self.nc_filepaths)
-        data = dc.load_by_geom(self.bbox, spatial_dim_name='tile_name', dtype='dataframe', origin='c')
+        data = dc.load_by_geom(self.bbox, dtype='dataframe', origin='c')
         assert self.ref_pd_df_area.equals(data)
         dc.close()
 
@@ -470,21 +460,23 @@ class LoadingGeomTester(LoadingTester):
     def test_load_geom_larger_than_tile(self):
         """ Tests loading data when the region of interest is larger than the data cube extent. """
 
-        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
-        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", inplace=True)
-        data = dc.load_by_geom(self.partial_outside_bbox, spatial_dim_name='tile_name', dtype='numpy')
+        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500, sdim_name="tile_name")
+        dc.filter_spatially_by_tilename("E042N012T6", inplace=True)
+        data = dc.load_by_geom(self.partial_outside_bbox, dtype='numpy')
         assert data.shape == (16, 10, 16)
 
     def test_load_geom_no_intersection(self):
         """ Tests loading data when the region of interest is outside the data cube extent. """
 
-        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
-        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", inplace=True)
+        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500, sdim_name="tile_name")
+        dc.filter_spatially_by_tilename("E042N012T6", inplace=True)
         try:
-            _ = dc.load_by_geom(self.outside_bbox, spatial_dim_name='tile_name', dtype='numpy')
+            _ = dc.load_by_geom(self.outside_bbox, dtype='numpy')
             assert False
         except:
             assert True
 
+
 if __name__ == '__main__':
     unittest.main()
+

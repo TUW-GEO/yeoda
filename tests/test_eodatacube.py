@@ -136,10 +136,10 @@ class EODataCubeTester(unittest.TestCase):
         """ Test splitting of the data cube in yearly intervals to create yearly data cubes. """
 
         dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
-                        dimensions=['time', 'var_name', 'pol'])
-        yearly_dcs = dc.split_yearly(name='time')
+                        dimensions=['time', 'var_name', 'pol'], tdim_name='time')
+        yearly_dcs = dc.split_yearly()
         assert len(yearly_dcs) == 2
-        dcs_2016 = dc.split_yearly(name='time', years=2016)
+        dcs_2016 = dc.split_yearly(years=2016)
         assert len(dcs_2016) == 1
         dc_2016 = dcs_2016[0]
         years = [timestamp.year for timestamp in dc_2016['time']]
@@ -149,10 +149,10 @@ class EODataCubeTester(unittest.TestCase):
         """ Test splitting of the data cube in monthly intervals to create monthly data cubes. """
 
         dc = EODataCube(filepaths=self.gt_filepaths, smart_filename_class=SgrtFilename,
-                        dimensions=['time', 'var_name', 'pol'])
-        monthly_dcs = dc.split_monthly(name='time')
+                        dimensions=['time', 'var_name', 'pol'], tdim_name='time')
+        monthly_dcs = dc.split_monthly()
         assert len(monthly_dcs) == 4
-        dcs_feb = dc.split_monthly(name='time', months=2)
+        dcs_feb = dc.split_monthly(months=2)
         assert len(dcs_feb) == 2
         months = [timestamp.month for dc_feb in dcs_feb for timestamp in dc_feb['time']]
         assert (np.array(months) == 2).all()
@@ -263,18 +263,18 @@ class EODataCubeTester(unittest.TestCase):
     def test_boundary_fail(self):
         """ Tests exception triggering when multiple tiles are present in the data cube and a boundary is requested. """
 
-        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'])
+        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sdim_name="tile_name")
         try:
-            boundary = dc.boundary(spatial_dim_name="tile_name")
+            boundary = dc.boundary
         except SpatialInconsistencyError:
             assert True
 
     def test_boundary(self):
         """ Tests equality of tile and data cube boundary. """
 
-        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500)
-        dc.filter_spatially_by_tilename("E042N012T6", dimension_name="tile_name", inplace=True)
-        boundary = dc.boundary(spatial_dim_name="tile_name")
+        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500, sdim_name="tile_name")
+        dc.filter_spatially_by_tilename("E042N012T6", inplace=True)
+        boundary = dc.boundary
         equi7 = Equi7Grid(500)
         tile_oi = equi7.EU.tilesys.create_tile(name="E042N012T6")
         assert ogr.CreateGeometryFromWkt(boundary.wkt).ExportToWkt() == tile_oi.get_extent_geometry_proj().ConvexHull().ExportToWkt()
@@ -285,4 +285,4 @@ if __name__ == '__main__':
     #tester = EODataCubeTester()
     #tester.setUpClass()
     #tester.setUp()
-    #tester.test_rename_dimension()
+    #tester.test_boundary()

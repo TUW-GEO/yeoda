@@ -130,7 +130,7 @@ def _set_status(status):
     return decorator
 
 
-class EODataCube(object):
+class EODataCube:
     """
     A file(name) based data cube for preferably gridded and well-structured EO data.
     """
@@ -189,8 +189,10 @@ class EODataCube(object):
             self.sdim_name = sdim_name
         elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()):
             geometries = [self.__geometry_from_file(filepath) for filepath in self.filepaths]
-            self.add_dimension('geometry', geometries, inplace=True)
             self.sdim_name = sdim_name if sdim_name in self.dimensions else "geometry"
+            self.add_dimension('geometry', geometries, inplace=True)
+        else:
+            self.sdim_name = sdim_name
 
     @property
     def filepaths(self):
@@ -232,7 +234,7 @@ class EODataCube(object):
             return None
 
     @classmethod
-    def from_inventory(cls, inventory, grid=None):
+    def from_inventory(cls, inventory, grid=None, **kwargs):
         """
         Creates an `EODataCube` instance from a given inventory.
 
@@ -249,7 +251,7 @@ class EODataCube(object):
             Data cube consisting of data stored in `inventory`.
         """
 
-        return cls(inventory=inventory, grid=grid)
+        return cls(inventory=inventory, grid=grid, **kwargs)
 
     @_check_inventory
     def rename_dimensions(self, dimensions_map, inplace=False):
@@ -270,6 +272,14 @@ class EODataCube(object):
         EODataCube
             `EODataCube` object with renamed dimensions/columns of the inventory.
         """
+
+        # reset spatial and and temporal dimension name
+        for old_dimension in list(dimensions_map.keys()):
+            if self.sdim_name == old_dimension:
+                self.sdim_name = dimensions_map[old_dimension]
+
+            if self.tdim_name == old_dimension:
+                self.tdim_name = dimensions_map[old_dimension]
 
         inventory = copy.deepcopy(self.inventory)
         inventory = inventory.rename(columns=dimensions_map)
@@ -403,11 +413,7 @@ class EODataCube(object):
         inventory = copy.deepcopy(self.inventory)
         inventory_sorted = inventory.sort_values(by=name, ascending=ascending)
 
-        if inplace:
-            self.inventory = inventory_sorted
-            return self
-        else:
-            return self.from_inventory(inventory=inventory_sorted, grid=self.grid)
+        return self.__assign_inventory(inventory=inventory_sorted)
 
     @_set_status('changed')
     def filter_by_dimension(self, values, expressions=None, name="time", inplace=False):
@@ -1435,7 +1441,7 @@ class EODataCube(object):
             filtered_inventories.append(eval(filter_cmd))
 
         if split:
-            eodcs = [self.from_inventory(filtered_inventory, grid=self.grid)
+            eodcs = [self.__assign_inventory(filtered_inventory, inplace=False)
                      for filtered_inventory in filtered_inventories]
             return eodcs
         else:
@@ -1459,11 +1465,24 @@ class EODataCube(object):
         EODataCube
         """
 
+        if self.sdim_name not in list(inventory.keys()):
+            sdim_name = None
+        else:
+            sdim_name = self.sdim_name
+
+        if self.tdim_name not in list(inventory.keys()):
+            tdim_name = None
+        else:
+            tdim_name = self.tdim_name
+
         if inplace:
             self.inventory = inventory
-            return None
+            self.sdim_name = sdim_name
+            self.tdim_name = tdim_name
+            return self
         else:
-            return self.from_inventory(inventory=inventory, grid=self.grid)
+            return self.from_inventory(inventory=inventory, grid=self.grid,
+                                       tdim_name=tdim_name, sdim_name=sdim_name)
 
     def __deepcopy__(self, memodict={}):
         """
@@ -1484,7 +1503,8 @@ class EODataCube(object):
         dimensions = copy.deepcopy(self.dimensions)
         inventory = copy.deepcopy(self.inventory)
 
-        return EODataCube(filepaths=filepaths, grid=grid, dimensions=dimensions, inventory=inventory)
+        return EODataCube(filepaths=filepaths, grid=grid, dimensions=dimensions, inventory=inventory,
+                          sdim_name=self.sdim_name, tdim_name=self.tdim_name)
 
     def __getitem__(self, dimension_name):
         """
@@ -1555,7 +1575,15 @@ def unite_datacubes(dcs):
     # this is a SQL alike UNION operation
     united_inventory = pd.concat(inventories, ignore_index=True, sort=False).drop_duplicates().reset_index(drop=True)
 
-    dc_merged = EODataCube.from_inventory(united_inventory, grid=dcs[0].grid)
+    sdim_name = dcs[0].sdim_name
+    tdim_name = dcs[0].tdim_name
+    if sdim_name not in list(united_inventory.keys()):
+        sdim_name = None
+
+    if tdim_name not in list(united_inventory.keys()):
+        tdim_name = None
+
+    dc_merged = EODataCube.from_inventory(united_inventory, grid=dcs[0].grid, sdim_name=sdim_name, tdim_name=tdim_name)
 
     return dc_merged
 
@@ -1589,7 +1617,17 @@ def intersect_datacubes(dcs, on_dimension=None):
         intersected_inventory = intersected_inventory[intersected_inventory[on_dimension].isin(common_vals)]
 
     intersected_inventory = intersected_inventory.drop_duplicates().reset_index(drop=True)
-    dc_merged = EODataCube.from_inventory(intersected_inventory, grid=dcs[0].grid)
+
+    sdim_name = dcs[0].sdim_name
+    tdim_name = dcs[0].tdim_name
+    if sdim_name not in list(intersected_inventory.keys()):
+        sdim_name = None
+
+    if tdim_name not in list(intersected_inventory.keys()):
+        tdim_name = None
+
+    dc_merged = EODataCube.from_inventory(intersected_inventory, grid=dcs[0].grid,
+                                          sdim_name=sdim_name, tdim_name=tdim_name)
 
     return dc_merged
 

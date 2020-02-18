@@ -282,7 +282,3 @@ class EODataCubeTester(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-    #tester = EODataCubeTester()
-    #tester.setUpClass()
-    #tester.setUp()
-    #tester.test_boundary()

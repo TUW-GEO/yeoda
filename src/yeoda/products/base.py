@@ -90,11 +90,13 @@ class ProductDataCube(EODataCube):
             dimensions.append('var_name')
 
         grid = kwargs.get('grid', Equi7Grid(sres).__getattr__(continent))
+
+        # add spatial and temporal dimension
         if 'tile_name' not in dimensions:
             dimensions.append('tile_name')
-
-        # retrieve remaining datacube attributes
-        sdim_name = kwargs.get('sdim_name', 'tile')
+        sdim_name = kwargs.get('sdim_name', 'tile_name')
+        if 'time' not in dimensions:
+            dimensions.append('time')
         tdim_name = kwargs.get('tdim_name', 'time')
 
         super().__init__(inventory=inventory, filepaths=filepaths, dimensions=dimensions,

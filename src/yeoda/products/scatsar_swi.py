@@ -127,7 +127,7 @@ class SCATSARSWIDataCube(ProductDataCube):
         """
 
         data = data.astype(float)
-        data[data > 200] = None
+        data[data > 200] = np.nan
         return data / 2.
 
 
@@ -140,5 +140,5 @@ if __name__ == '__main__':
     dc = SCATSARSWIDataCube(dir_tree=dir_tree)
     dc.filter_by_dimension('E048N012T6', name='tile_name', inplace=True)
     #BBM: reading nc files does not work
-    ts = dc.load_by_pixels(1111, 1111, band='1')
+    ts = dc.load_by_pixels(1111, 1111, band='SWI_T002')
     pass

@@ -768,12 +768,15 @@ class EODataCube:
             if self._ds is None and self.status != "stable":
                 file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
                 self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
-            data = self.decode(self._ds.read()[band][:, min_row:max_row, min_col:max_col].to_dataset())
-            if data is None:
-                raise LoadingDataError()
 
+            data_ar = self._ds.read()[band][:, min_row:max_row, min_col:max_col]
+            data_ar.data = self.decode(data_ar.data)
+
+            if data_ar is None:
+                raise LoadingDataError()
             if apply_mask:
-                data.data = np.ma.array(data.data, mask=np.stack([data_mask] * data.data.shape[0], axis=0))
+                data_ar.data = np.ma.array(data_ar.data, mask=np.stack([data_mask] * data_ar.data.shape[0], axis=0))
+            data = data_ar.to_dataset()
         else:
             raise FileTypeUnknown(file_type)
 
@@ -876,10 +879,12 @@ class EODataCube:
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
                     self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
                 if row_size != 1 and col_size != 1:
-                    data_i = self.decode(self._ds.read()[band][:, row:(row + row_size), col:(col + col_size)].to_dataset())
+                    data_ar = self._ds.read()[band][:, row:(row + row_size), col:(col + col_size)]
                 else:
-                    data_i = self.decode(self._ds.read()[band][:, row:(row + 1), col:(col + 1)].to_dataset())  # +1 to keep the dimension
-                data.append(data_i)
+                    data_ar = self._ds.read()[band][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
+
+                data_ar.data = self.decode(data_ar.data)
+                data.append(data_ar.to_dataset())
             else:
                 raise FileTypeUnknown(file_type)
 
@@ -962,17 +967,26 @@ class EODataCube:
                 if self._ds is None and self.status != "stable":
                     file_ts = {'filenames': self.filepaths}
                     self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
-                data_i = self.decode(self._ds.read_ts(col, row))
+                data_i = self._ds.read_ts(col, row)
+                if data_i is None:
+                    raise LoadingDataError()
+
+                data_i = self.decode(data_i)
+
             elif file_type == "NetCDF":
                 if self._ds is None and self.status != "stable":
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
                     self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
-                data_i = self.decode(self._ds.read()[band][:, row:(row + 1), col:(col + 1)].to_dataset())  # +1 to keep the dimension
+
+                data_ar = self._ds.read()[band][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
+                if data_ar is None:
+                    raise LoadingDataError()
+
+                data_ar.data = self.decode(data_ar.data)
+                data_i = data_ar.to_dataset()
             else:
                 raise FileTypeUnknown(file_type)
 
-            if data_i is None:
-                raise LoadingDataError()
             data.append(data_i)
 
         return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)

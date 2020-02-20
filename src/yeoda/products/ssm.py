@@ -104,5 +104,5 @@ class SSMDataCube(ProductDataCube):
         """
 
         data = data.astype(float)
-        data[data > 200] = None
+        data[data > 200] = np.nan
         return data / 2.

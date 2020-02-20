@@ -66,7 +66,7 @@ class SSMDataCube(ProductDataCube):
             Arbitrary keyword arguments (e.g. containing 'inventory' or 'grid').
         """
 
-        super().__init__(root_dirpath, ["SSM", "SSM-NOISE"], spres=sres, continent=continent, dimensions=dimensions,
+        super().__init__(root_dirpath, ["SSM", "SSM-NOISE"], sres=sres, continent=continent, dimensions=dimensions,
                          **kwargs)
 
     def encode(self, data):

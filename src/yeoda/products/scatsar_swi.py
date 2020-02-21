@@ -92,7 +92,7 @@ class SCATSARSWIDataCube(ProductDataCube):
         super().__init__(root_dirpath, ['SWI'], sres=sres, continent=continent, dimensions=dimensions,
                          **kwargs)
 
-    def encode(self, data):
+    def encode(self, data, band=None):
         """
         Encoding function for TUWGEO SSM/SSM-NOISE data.
 
@@ -111,7 +111,7 @@ class SCATSARSWIDataCube(ProductDataCube):
         data[np.isnan(data)] = 255
         return data
 
-    def decode(self, data):
+    def decode(self, data, band=None):
         """
         Decoding function for TUWGEO SSM/SSM-NOISE data.
 
@@ -125,10 +125,35 @@ class SCATSARSWIDataCube(ProductDataCube):
         np.ndarray
             Decoded data based on native units.
         """
+        # TODO: @bbm add code
+        if band in ["SWI_T002"]:
+            data = data.astype(float)
+            data[data > 200] = np.nan
+            data /= 2.
+        elif band in ["QFLAG_T002"]:
+            data = data.astype(float)
+            data[data > 200] = np.nan
+            data /= 2.
+        else:
+            err_msg = 'Band {} is unknown.'.format(band)
+            raise Exception(err_msg)
 
-        data = data.astype(float)
-        data[data > 200] = np.nan
-        return data / 2.
+        return data
+
+    def load_by_coords(self, xs, ys, sref=None, band='1', dtype="xarray", origin="ur"):
+        decode_kwargs = {'band': band}
+        return super().load_by_coords(xs, ys, sref=sref, band=band, dtype=dtype, origin=origin,
+                                      decode_kwargs=decode_kwargs)
+
+    def load_by_geom(self, geom, sref=None, band='1', apply_mask=False, dtype="xarray", origin='ur'):
+        decode_kwargs = {'band': band}
+        return super().load_by_geom(geom, sref=sref, band=band, apply_mask=apply_mask, dtype=dtype, origin=origin,
+                                    decode_kwargs=decode_kwargs)
+
+    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', dtype="xarray", origin="ur"):
+        decode_kwargs = {'band': band}
+        return super().load_by_pixels(rows, cols, row_size=row_size, col_size=col_size, band=band, dtype=dtype,
+                                      origin=origin, decode_kwargs=decode_kwargs)
 
 
 if __name__ == '__main__':
@@ -139,6 +164,5 @@ if __name__ == '__main__':
 
     dc = SCATSARSWIDataCube(dir_tree=dir_tree)
     dc.filter_by_dimension('E048N012T6', name='tile_name', inplace=True)
-    #BBM: reading nc files does not work
     ts = dc.load_by_pixels(1111, 1111, band='SWI_T002')
     pass

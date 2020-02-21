@@ -72,7 +72,7 @@ class PreprocessedDataCube(ProductDataCube):
         super().__init__(root_dirpath=root_dirpath, var_names=var_names, sres=sres, continent=continent,
                          dimensions=dimensions, file_pattern=file_pattern, **kwargs)
 
-    def encode(self, data):
+    def encode(self, data, **kwargs):
         """
         Joint encoding function for TUWGEO preprocessed data.
 
@@ -92,7 +92,7 @@ class PreprocessedDataCube(ProductDataCube):
         data.astype(np.int16)
         return data
 
-    def decode(self, data):
+    def decode(self, data, **kwargs):
         """
         Joint decoding function for TUWGEO preprocessed data.
 

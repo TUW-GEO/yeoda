@@ -662,7 +662,8 @@ class EODataCube:
         return self.split_by_dimension(values, expressions, name=self.tdim_name)
 
     @_set_status('stable')
-    def load_by_geom(self, geom, sref=None, band='1', apply_mask=False, dtype="xarray", origin='ur'):
+    def load_by_geom(self, geom, sref=None, band='1', apply_mask=False, dtype="xarray", origin='ur',
+                     decode_kwargs=None):
         """
         Loads data according to a given geometry.
 
@@ -691,6 +692,8 @@ class EODataCube:
                 - lower right ("lr")
                 - lower left ("ll")
                 - center ("c")
+        decode_kwargs: dict, optional
+            Keyword arguments for the decoder.
 
         Returns
         -------
@@ -700,6 +703,8 @@ class EODataCube:
 
         if self.inventory is None:  # no data given
             return None
+
+        decode_kwargs = {} if decode_kwargs is None else decode_kwargs
 
         if self.grid:
             if self.sdim_name not in self.dimensions:
@@ -752,7 +757,7 @@ class EODataCube:
             if self._ds is None and self.status != "stable":
                 file_ts = {'filenames': list(self.filepaths)}
                 self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
-            data = self.decode(self._ds.read_ts(min_col, min_row, col_size=col_size, row_size=row_size))
+            data = self.decode(self._ds.read_ts(min_col, min_row, col_size=col_size, row_size=row_size), **decode_kwargs)
             if data is None:
                 raise LoadingDataError()
 
@@ -770,7 +775,7 @@ class EODataCube:
                 self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
 
             data_ar = self._ds.read()[band][:, min_row:max_row, min_col:max_col]
-            data_ar.data = self.decode(data_ar.data)
+            data_ar.data = self.decode(data_ar.data, **decode_kwargs)
 
             if data_ar is None:
                 raise LoadingDataError()
@@ -783,7 +788,8 @@ class EODataCube:
         return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
 
     @_set_status('stable')
-    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', dtype="xarray", origin="ur"):
+    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', dtype="xarray", origin="ur",
+                       decode_kwargs=None):
         """
         Loads data according to given pixel numbers, i.e. the row and column numbers and optionally a certain
         pixel window (`row_size` and `col_size`).
@@ -816,6 +822,8 @@ class EODataCube:
                 - lower right ("lr")
                 - lower left ("ll")
                 - center ("c")
+        decode_kwargs: dict, optional
+            Keyword arguments for the decoder.
 
         Returns
         -------
@@ -825,6 +833,8 @@ class EODataCube:
 
         if self.inventory is None:  # no data given
             return None
+
+        decode_kwargs = {} if decode_kwargs is None else decode_kwargs
 
         if not isinstance(rows, list):
             rows = [rows]
@@ -858,7 +868,7 @@ class EODataCube:
                     file_ts = {'filenames': list(self.filepaths)}
                     self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
 
-                data_i = self.decode(self._ds.read_ts(col, row, col_size=col_size, row_size=row_size))
+                data_i = self.decode(self._ds.read_ts(col, row, col_size=col_size, row_size=row_size), **decode_kwargs)
                 if data_i is None:
                     raise LoadingDataError()
                 data.append(data_i)
@@ -883,7 +893,7 @@ class EODataCube:
                 else:
                     data_ar = self._ds.read()[band][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
 
-                data_ar.data = self.decode(data_ar.data)
+                data_ar.data = self.decode(data_ar.data, **decode_kwargs)
                 data.append(data_ar.to_dataset())
             else:
                 raise FileTypeUnknown(file_type)
@@ -891,7 +901,7 @@ class EODataCube:
         return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
 
     @_set_status('stable')
-    def load_by_coords(self, xs, ys, sref=None, band='1', dtype="xarray", origin="ur"):
+    def load_by_coords(self, xs, ys, sref=None, band='1', dtype="xarray", origin="ur", decode_kwargs=None):
         """
         Loads data as a 1-D array according to a given coordinate.
 
@@ -921,6 +931,8 @@ class EODataCube:
                 - lower right ("lr")
                 - lower left ("ll")
                 - center ("c")
+        decode_kwargs: dict, optional
+            Keyword arguments for the decoder.
 
         Returns
         -------
@@ -930,6 +942,8 @@ class EODataCube:
 
         if self.inventory is None:  # no data given
             return None
+
+        decode_kwargs = {} if decode_kwargs is None else decode_kwargs
 
         if not isinstance(xs, list):
             xs = [xs]
@@ -971,7 +985,7 @@ class EODataCube:
                 if data_i is None:
                     raise LoadingDataError()
 
-                data_i = self.decode(data_i)
+                data_i = self.decode(data_i, **decode_kwargs)
 
             elif file_type == "NetCDF":
                 if self._ds is None and self.status != "stable":
@@ -982,7 +996,7 @@ class EODataCube:
                 if data_ar is None:
                     raise LoadingDataError()
 
-                data_ar.data = self.decode(data_ar.data)
+                data_ar.data = self.decode(data_ar.data, **decode_kwargs)
                 data_i = data_ar.to_dataset()
             else:
                 raise FileTypeUnknown(file_type)
@@ -991,7 +1005,7 @@ class EODataCube:
 
         return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
 
-    def encode(self, data):
+    def encode(self, data, **kwargs):
         """
         Encodes an array.
 
@@ -1008,7 +1022,7 @@ class EODataCube:
 
         return data
 
-    def decode(self, data):
+    def decode(self, data, **kwargs):
         """
         Decodes an encoded array to retrieve the values in native units.
 

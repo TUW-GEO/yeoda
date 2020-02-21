@@ -69,7 +69,7 @@ class SSMDataCube(ProductDataCube):
         super().__init__(root_dirpath, ["SSM", "SSM-NOISE"], sres=sres, continent=continent, dimensions=dimensions,
                          **kwargs)
 
-    def encode(self, data):
+    def encode(self, data, **kwargs):
         """
         Encoding function for TUWGEO SSM/SSM-NOISE data.
 
@@ -88,7 +88,7 @@ class SSMDataCube(ProductDataCube):
         data[np.isnan(data)] = 255
         return data
 
-    def decode(self, data):
+    def decode(self, data, **kwargs):
         """
         Decoding function for TUWGEO SSM/SSM-NOISE data.
 

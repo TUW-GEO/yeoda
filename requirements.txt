@@ -4,7 +4,7 @@
 # geopandas>=0.6.1 # Note that at the moment geopandas needs to be installed with pip under Linux
 # regex
 # netCDF4
-# xarray
+# xarray>=0.15.0
 # dask
 # pip
 

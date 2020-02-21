@@ -69,25 +69,25 @@ class SCATSARSWIDataCube(ProductDataCube):
         """
 
         # BBM: should that be used somehow?
-        # swi_variables = list(('SWI_T002',
-        #                       'SWI_T005',
-        #                       'SWI_T010',
-        #                       'SWI_T015',
-        #                       'SWI_T020',
-        #                       'SWI_T040',
-        #                       'SWI_T060',
-        #                       'SWI_T100',
-        #                       'QFLAG_T002',
-        #                       'QFLAG_T005',
-        #                       'QFLAG_T010',
-        #                       'QFLAG_T015',
-        #                       'QFLAG_T020',
-        #                       'QFLAG_T040',
-        #                       'QFLAG_T060',
-        #                       'QFLAG_T100',
-        #                       'SSF',
-        #                       'SCAT_IC',
-        #                       'SAR_IC'))
+        swi_variables = list(('SWI_T002',
+                              'SWI_T005',
+                              'SWI_T010',
+                              'SWI_T015',
+                              'SWI_T020',
+                              'SWI_T040',
+                              'SWI_T060',
+                              'SWI_T100',
+                              'QFLAG_T002',
+                              'QFLAG_T005',
+                              'QFLAG_T010',
+                              'QFLAG_T015',
+                              'QFLAG_T020',
+                              'QFLAG_T040',
+                              'QFLAG_T060',
+                              'QFLAG_T100',
+                              'SSF',
+                              'SCAT_IC',
+                              'SAR_IC'))
 
         super().__init__(root_dirpath, ['SWI'], sres=sres, continent=continent, dimensions=dimensions,
                          **kwargs)
@@ -100,6 +100,13 @@ class SCATSARSWIDataCube(ProductDataCube):
         ----------
         data : np.ndarray
             Input data.
+        band : str
+            name of band is stored in netCDF file. one of
+            'SWI_T002','SWI_T005','SWI_T010','SWI_T015','SWI_T020','SWI_T040','SWI_T060','SWI_T100',
+            'QFLAG_T002' ... to ... 'QFLAG_T100' (Quality Flags),
+            'SSF' (Surface State Flag),
+            'SCAT_IC','SAR_IC' (input SSM data count for SCAT and SAR, i.e. how many individual
+                                observations contribute to the daily SWI value update)
 
         Returns
         -------
@@ -107,33 +114,59 @@ class SCATSARSWIDataCube(ProductDataCube):
             Encoded data.
         """
 
-        data *= 2
+        if band in ['SWI_T002', 'SWI_T005', 'SWI_T010', 'SWI_T015',
+                    'SWI_T020', 'SWI_T040', 'SWI_T060', 'SWI_T100',
+                    'QFLAG_T002', 'QFLAG_T005', 'QFLAG_T010', 'QFLAG_T015',
+                    'QFLAG_T020', 'QFLAG_T040', 'QFLAG_T060', 'QFLAG_T100']:
+            data *= 2
+
+        elif band in ['SSF', 'SCAT_IC','SAR_IC']:
+            pass
+
+        else:
+            err_msg = 'Band {} is unknown.'.format(band)
+            raise Exception(err_msg)
+
         data[np.isnan(data)] = 255
+        data.astype(np.uint8)
+
         return data
 
     def decode(self, data, band=None):
         """
-        Decoding function for TUWGEO SSM/SSM-NOISE data.
+        Decoding function for TUWGEO SCATSAR-SWI data.
 
         Parameters
         ----------
         data : np.ndarray
             Encoded input data.
+        band : str
+            name of band is stored in netCDF file. one of
+            'SWI_T002','SWI_T005','SWI_T010','SWI_T015','SWI_T020','SWI_T040','SWI_T060','SWI_T100',
+            'QFLAG_T002' ... to ... 'QFLAG_T100' (Quality Flags),
+            'SSF' (Surface State Flag),
+            'SCAT_IC','SAR_IC' (input SSM data count for SCAT and SAR, i.e. how many individual
+                                observations contribute to the daily SWI value update)
 
         Returns
         -------
         np.ndarray
             Decoded data based on native units.
+
         """
-        # TODO: @bbm add code
-        if band in ["SWI_T002"]:
+
+        if band in ['SWI_T002', 'SWI_T005', 'SWI_T010', 'SWI_T015',
+                    'SWI_T020', 'SWI_T040', 'SWI_T060', 'SWI_T100',
+                    'QFLAG_T002', 'QFLAG_T005', 'QFLAG_T010', 'QFLAG_T015',
+                    'QFLAG_T020', 'QFLAG_T040', 'QFLAG_T060', 'QFLAG_T100']:
             data = data.astype(float)
             data[data > 200] = np.nan
             data /= 2.
-        elif band in ["QFLAG_T002"]:
-            data = data.astype(float)
-            data[data > 200] = np.nan
-            data /= 2.
+
+        elif band in ['SSF', 'SCAT_IC','SAR_IC']:
+            data = data.astype(int)
+            data[data > 200] = 255
+
         else:
             err_msg = 'Band {} is unknown.'.format(band)
             raise Exception(err_msg)
@@ -164,5 +197,13 @@ if __name__ == '__main__':
 
     dc = SCATSARSWIDataCube(dir_tree=dir_tree)
     dc.filter_by_dimension('E048N012T6', name='tile_name', inplace=True)
-    ts = dc.load_by_pixels(1111, 1111, band='SWI_T002')
+    ts = dc.load_by_pixels(1111, 1111, band='SWI_T100', dtype='numpy')
+    # TODO
+    # BBM: with this call, the scale_factor of 0.5 is applied twice: once when reading from .nc,
+    #                                                                and once with encode()...
+    # how to proceed?
+    #
+    # should apply the SCATSAR-masking?
+    # like 'ExceedingMin ExceedingMax WaterMask SensitivityMask SlopeMask LowQFLAG'
+    #       241,        242,           251,         252,            253,    254
     pass

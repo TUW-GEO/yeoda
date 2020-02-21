@@ -86,6 +86,7 @@ class SSMDataCube(ProductDataCube):
 
         data *= 2
         data[np.isnan(data)] = 255
+        data.astype(np.uint8)
         return data
 
     def decode(self, data, **kwargs):

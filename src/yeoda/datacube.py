@@ -806,10 +806,6 @@ class EODataCube:
             Number of columns to read (counts from input argument `cols`, default is 1).
         band : int or str, optional
             Band number or name (default is 1).
-        spatial_dim_name : str, optional
-            Name of the spatial dimension (default: 'tile').
-        temporal_dim_name : str, optional
-            Name of the temporal dimension (default: 'time').
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
@@ -915,10 +911,6 @@ class EODataCube:
             Spatial reference referring to the world system coordinates `x` and `y`.
         band : int or str, optional
             Band number or name (default is 1).
-        spatial_dim_name : str, optional
-            Name of the spatial dimension (default: 'tile').
-        temporal_dim_name : str, optional
-            Name of the temporal dimension (default: 'time').
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
@@ -1013,6 +1005,8 @@ class EODataCube:
         ----------
         data : numpy, dask or xarray array
             Data array.
+        **kwargs
+            Keyword arguments for encoding function.
 
         Returns
         -------
@@ -1030,6 +1024,8 @@ class EODataCube:
         ----------
         data : numpy, dask or xarray array
             Encoded array.
+        **kwargs
+            Keyword arguments for decoding function.
 
         Returns
         -------

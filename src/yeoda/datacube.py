@@ -772,7 +772,7 @@ class EODataCube:
         elif file_type == "NetCDF":
             if self._ds is None and self.status != "stable":
                 file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
-                self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+                self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
 
             data_ar = self._ds.read()[band][:, min_row:max_row, min_col:max_col]
             data_ar.data = self.decode(data_ar.data, **decode_kwargs)
@@ -883,7 +883,7 @@ class EODataCube:
             elif file_type == "NetCDF":
                 if self._ds is None and self.status != "stable":
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
-                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
                 if row_size != 1 and col_size != 1:
                     data_ar = self._ds.read()[band][:, row:(row + row_size), col:(col + col_size)]
                 else:
@@ -982,7 +982,7 @@ class EODataCube:
             elif file_type == "NetCDF":
                 if self._ds is None and self.status != "stable":
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
-                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
 
                 data_ar = self._ds.read()[band][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
                 if data_ar is None:

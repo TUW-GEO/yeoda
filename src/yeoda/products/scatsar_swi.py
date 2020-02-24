@@ -140,7 +140,7 @@ class SCATSARSWIDataCube(ProductDataCube):
         if band in SCATSARSWIDataCube._swi_vars_scld:
             data = data.astype(float)
             data[data > 200] = np.nan
-            #data /= 2.
+            data /= 2.
         elif band in SCATSARSWIDataCube._swi_vars_unscld:
             data = data.astype(int)
             data[data > 200] = 255
@@ -272,17 +272,9 @@ if __name__ == '__main__':
 
     root_dirpath = r'R:\Datapool_processed\SCATSAR\CGLS\C0418\202002_test'
     folder_hierarchy = ['grid', 'tile', 'var']
-    dir_tree = build_smarttree(root_dirpath, folder_hierarchy, register_file_pattern='.nc')
+    dir_tree = build_smarttree(root_dirpath, folder_hierarchy, register_file_pattern='.nc$')
 
     dc = SCATSARSWIDataCube(dir_tree=dir_tree)
     dc.filter_by_dimension('E048N012T6', name='tile_name', inplace=True)
     ts = dc.load_by_pixels(1111, 1111, band='SWI_T100', dtype='numpy')
-    # TODO
-    # BBM: with this call, the scale_factor of 0.5 is applied twice: once when reading from .nc,
-    #                                                                and once with encode()...
-    # how to proceed?
-    #
-    # should apply the SCATSAR-masking?
-    # like 'ExceedingMin ExceedingMax WaterMask SensitivityMask SlopeMask LowQFLAG'
-    #       241,        242,           251,         252,            253,    254
     pass

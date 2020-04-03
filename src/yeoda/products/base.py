@@ -48,7 +48,7 @@ class ProductDataCube(EODataCube):
     """
 
     def __init__(self, root_dirpath=None, var_names=None, sres=10, continent='EU', dimensions=None,
-                 file_pattern=".tif$", **kwargs):
+                 file_pattern=None, **kwargs):
 
         """
         Constructor of class `ProductDataCube`.

@@ -1,4 +1,4 @@
-name: yeoda_hotfix
+name: yeoda
 channels:
   - conda-forge
 dependencies:

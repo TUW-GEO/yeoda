@@ -2,6 +2,7 @@ name: yeoda-doc
 dependencies:
   - python=3.6
   - gdal<=3.0.0
+  - cftime<1.1
   - regex
   - netCDF4
   - xarray

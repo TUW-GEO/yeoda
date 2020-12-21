@@ -234,6 +234,30 @@ def setup_nc_single_test_data():
     return filepath, timestamps
 
 
+def setup_scatsarswi_single_test_data():
+    """
+    Creates test data as a multi-time and multi-variable NetCDF file for SCATSAR-SWI data.
+
+    Returns
+    -------
+    str
+        NetCDF test data filepath.
+    list of datetime
+        List of timestamps as datetime objects.
+    """
+
+    root_dirpath = os.path.join(dirpath_test(), 'data', 'SCATSAR_SWI')
+
+    # create target folders
+    dirpath = os.path.join(root_dirpath, 'C0418', 'EQUI7_EU500M', 'E042N030T6', 'swi')
+
+    filepath = os.path.join(dirpath, "M20201128_120000--_SWI------_SCATSAR-46VV-_---_C0418_EU500M_E042N030T6.nc")
+    timestamps = [datetime(2020, 11, 28)]
+    timestamps = [pd.Timestamp(timestamp.strftime("%Y%m%d")) for timestamp in timestamps]
+
+    return root_dirpath, filepath, timestamps
+
+
 def roi_test():
     """ Creates a bounding box and a spatial reference object in LonLat. """
 

@@ -72,7 +72,7 @@ class LoadingTester(unittest.TestCase):
     def tearDownClass(cls):
         """ Removes all test data. """
 
-        shutil.rmtree(os.path.join(dirpath_test(), 'data'))
+        shutil.rmtree(os.path.join(dirpath_test(), 'data', 'Sentinel-1_CSAR'))
 
     def _create_loadable_dc(self, filepaths):
         """

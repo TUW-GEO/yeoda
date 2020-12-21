@@ -60,7 +60,7 @@ class FilteringTester(unittest.TestCase):
     def tearDownClass(cls):
         """ Removes all test data. """
 
-        shutil.rmtree(os.path.join(dirpath_test(), 'data'))
+        shutil.rmtree(os.path.join(dirpath_test(), 'data', 'Sentinel-1_CSAR'))
 
     def setUp(self):
         """ Retrieves test data filepaths and auxiliary data. """

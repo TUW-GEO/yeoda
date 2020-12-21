@@ -51,7 +51,7 @@ class SCATSARSWIDataCube(ProductDataCube):
     _swi_vars_scld = ['SWI_T002', 'SWI_T005', 'SWI_T010', 'SWI_T015', 'SWI_T020', 'SWI_T040', 'SWI_T060', 'SWI_T100',
                       'QFLAG_T002', 'QFLAG_T005', 'QFLAG_T010', 'QFLAG_T015', 'QFLAG_T020', 'QFLAG_T040',
                       'QFLAG_T060', 'QFLAG_T100']
-    _swi_vars_unscld = ['SSF', 'SCAT_IC','SAR_IC']
+    _swi_vars_unscld = ['SSF', 'SCAT_IC', 'SAR_IC']
 
     def __init__(self, root_dirpath=None, sres=500, continent='EU', dimensions=None, **kwargs):
         """
@@ -269,12 +269,4 @@ class SCATSARSWIDataCube(ProductDataCube):
 
 
 if __name__ == '__main__':
-
-    root_dirpath = r'R:\Datapool_processed\SCATSAR\CGLS\C0418\202002_test'
-    folder_hierarchy = ['grid', 'tile', 'var']
-    dir_tree = build_smarttree(root_dirpath, folder_hierarchy, register_file_pattern='.nc$')
-
-    dc = SCATSARSWIDataCube(dir_tree=dir_tree)
-    dc.filter_by_dimension('E048N012T6', name='tile_name', inplace=True)
-    ts = dc.load_by_pixels(1111, 1111, band='SWI_T100', dtype='numpy')
     pass

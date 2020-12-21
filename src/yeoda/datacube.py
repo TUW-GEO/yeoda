@@ -1194,6 +1194,9 @@ class EODataCube:
             List of world system coordinates in Y direction.
         band : int or str, optional
             Band number or name (default is 1).
+        time_units : str, optional
+            Time units definition for NetCDF4's `num2date` function.
+            Defaults to 'days since 1900-01-01 00:00:00'.
 
         Returns
         -------

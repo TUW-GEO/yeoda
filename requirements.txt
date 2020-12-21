@@ -1,16 +1,10 @@
-# Required packages needed to be installed with conda (preferably from the conda-forge channel):
-# python=3.6
-# gdal=2.4.3
-# geopandas>=0.6.1 # Note that at the moment geopandas needs to be installed with pip under Linux
-# regex
-# netCDF4
-# xarray>=0.15.0
-# dask
-# pip
-
-# remaining and currently not officially released requirements:
+gdal==2.4.3
+geopandas>=0.6.1
+xarray
+dask
+regex
 pytileproj==0.0.12
 Equi7Grid==0.0.10
-git+https://github.com/TUW-GEO/veranda.git@master
-git+https://github.com/TUW-GEO/geopathfinder.git@master
+veranda==0.1.0
+geopathfinder==0.0.7
 

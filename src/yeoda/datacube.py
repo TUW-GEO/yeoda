@@ -663,7 +663,7 @@ class EODataCube:
         return self.split_by_dimension(values, expressions, name=self.tdim_name)
 
     @_set_status('stable')
-    def load_by_geom(self, geom, sref=None, band='1', apply_mask=False, dtype="xarray", origin='ur',
+    def load_by_geom(self, geom, sref=None, band=1, apply_mask=False, dtype="xarray", origin='ul',
                      decode_kwargs=None):
         """
         Loads data according to a given geometry.
@@ -688,8 +688,8 @@ class EODataCube:
                 - 'dataframe': loads data as a pandas.DataFrame
         origin: str, optional
             Defines the world system origin of the pixel. It can be:
-                - upper left ("ul")
-                - upper right ("ur", default)
+                - upper left ("ul", default)
+                - upper right ("ur")
                 - lower right ("lr")
                 - lower left ("ll")
                 - center ("c")
@@ -757,8 +757,7 @@ class EODataCube:
         if file_type == "GeoTIFF":
             if self._ds is None and self.status != "stable":
                 file_ts = {'filenames': list(self.filepaths)}
-                self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
-
+                self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
             data = self.decode(self._ds.read_ts(min_col, min_row, col_size=col_size, row_size=row_size), **decode_kwargs)
             if data is None:
                 raise LoadingDataError()
@@ -777,7 +776,7 @@ class EODataCube:
                 file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
                 self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
             time_units = self._ds.time_units
-            data_ar = self._ds.read()[band][:, min_row:max_row, min_col:max_col]
+            data_ar = self._ds.read()[str(band)][:, min_row:max_row, min_col:max_col]
             data_ar.data = self.decode(data_ar.data, **decode_kwargs)
 
             if data_ar is None:
@@ -792,7 +791,7 @@ class EODataCube:
         return data
 
     @_set_status('stable')
-    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band='1', dtype="xarray", origin="ur",
+    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band=1, dtype="xarray", origin="ul",
                        decode_kwargs=None):
         """
         Loads data according to given pixel numbers, i.e. the row and column numbers and optionally a certain
@@ -817,8 +816,8 @@ class EODataCube:
                 - 'dataframe': loads data as a pandas.DataFrame
         origin: str, optional
             Defines the world system origin of the pixel. It can be:
-                - upper left ("ul")
-                - upper right ("ur", default)
+                - upper left ("ul", default)
+                - upper right ("ur")
                 - lower right ("lr")
                 - lower left ("ll")
                 - center ("c")
@@ -867,7 +866,7 @@ class EODataCube:
             if file_type == "GeoTIFF":
                 if self._ds is None and self.status != "stable":
                     file_ts = {'filenames': list(self.filepaths)}
-                    self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
+                    self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
 
                 data_i = self.decode(self._ds.read_ts(col, row, col_size=col_size, row_size=row_size), **decode_kwargs)
                 if data_i is None:
@@ -891,9 +890,9 @@ class EODataCube:
                     self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
                 time_units = self._ds.time_units
                 if row_size != 1 and col_size != 1:
-                    data_ar = self._ds.read()[band][:, row:(row + row_size), col:(col + col_size)]
+                    data_ar = self._ds.read()[str(band)][:, row:(row + row_size), col:(col + col_size)]
                 else:
-                    data_ar = self._ds.read()[band][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
+                    data_ar = self._ds.read()[str(band)][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
 
                 data_ar.data = self.decode(data_ar.data, **decode_kwargs)
                 data.append(data_ar.to_dataset())
@@ -903,7 +902,7 @@ class EODataCube:
         return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, time_units=time_units)
 
     @_set_status('stable')
-    def load_by_coords(self, xs, ys, sref=None, band='1', dtype="xarray", origin="ur", decode_kwargs=None):
+    def load_by_coords(self, xs, ys, sref=None, band=1, dtype="xarray", origin="ul", decode_kwargs=None):
         """
         Loads data as a 1-D array according to a given coordinate.
 
@@ -924,8 +923,8 @@ class EODataCube:
                 - 'dataframe': loads data as a pandas.DataFrame
         origin: str, optional
             Defines the world system origin of the pixel. It can be:
-                - upper left ("ul")
-                - upper right ("ur", default)
+                - upper left ("ul", default)
+                - upper right ("ur")
                 - lower right ("lr")
                 - lower left ("ll")
                 - center ("c")
@@ -979,19 +978,18 @@ class EODataCube:
             if file_type == "GeoTIFF":
                 if self._ds is None and self.status != "stable":
                     file_ts = {'filenames': self.filepaths}
-                    self._ds = GeoTiffRasterTimeStack(file_ts=file_ts)
-                data_i = self._ds.read_ts(col, row)
+                    self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
+                data_i = self.decode(self._ds.read_ts(col, row))
                 if data_i is None:
                     raise LoadingDataError()
 
                 data_i = self.decode(data_i, **decode_kwargs)
-
             elif file_type == "NetCDF":
                 if self._ds is None and self.status != "stable":
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
                     self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
                 time_units = self._ds.time_units
-                data_ar = self._ds.read()[band][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
+                data_ar = self._ds.read()[str(band)][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
                 if data_ar is None:
                     raise LoadingDataError()
 
@@ -1216,7 +1214,7 @@ class EODataCube:
                         y = [y]
                     xr_ar = xr.DataArray(entry, coords={self.tdim_name: timestamps, 'y': y, 'x': x},
                                          dims=[self.tdim_name, 'y', 'x'])
-                    ds.append(xr.Dataset(data_vars={band: xr_ar}))
+                    ds.append(xr.Dataset(data_vars={str(band): xr_ar}))
                 converted_data = xr.merge(ds)
             elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
                 converted_data = xr.merge(data)
@@ -1227,7 +1225,7 @@ class EODataCube:
             elif isinstance(data, np.ndarray):
                 xr_ar = xr.DataArray(data, coords={self.tdim_name: timestamps, 'y': ys, 'x': xs},
                                      dims=[self.tdim_name, 'y', 'x'])
-                converted_data = xr.Dataset(data_vars={band: xr_ar})
+                converted_data = xr.Dataset(data_vars={str(band): xr_ar})
             elif isinstance(data, xr.Dataset):
                 converted_data = data
                 if converted_data['time'].dtype == 'float':
@@ -1242,11 +1240,11 @@ class EODataCube:
                 else:
                     converted_data = data
             elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
-                converted_data = [np.array(entry[band].data) for entry in data]
+                converted_data = [np.array(entry[str(band)].data) for entry in data]
                 if len(converted_data) == 1:
                     converted_data = converted_data[0]
             elif isinstance(data, xr.Dataset):
-                converted_data = np.array(data[band].data)
+                converted_data = np.array(data[str(band)].data)
             elif isinstance(data, np.ndarray):
                 converted_data = data
             else:

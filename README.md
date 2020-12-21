@@ -32,6 +32,9 @@ To install *yeoda* via pip in your own environment, use:
 ```
 pip install yeoda
 ```
+**ATTENTION**: GDAL needs more OS support and has more dependencies then other packages and can therefore not be installed solely via pip.
+Please have a look at https://pypi.org/project/GDAL/ what requirements are needed. Thus, for a fresh setup, an existing environment 
+with a Python and GDAL installation are expected.
 
 ### conda
 The packages also comes along with two conda environments, one for Linux (``conda_env_linux.yml``) and one for Windows (``conda_env_windows.yml``). 

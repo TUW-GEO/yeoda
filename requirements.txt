@@ -1,7 +1,5 @@
 gdal==2.4.3
 geopandas>=0.6.1
-xarray
-dask
 regex
 pytileproj==0.0.12
 Equi7Grid==0.0.10

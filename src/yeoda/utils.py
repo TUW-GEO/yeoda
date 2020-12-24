@@ -35,8 +35,8 @@ Utilities and helping functions for the other modules of yeoda.
 import os
 
 # geo packages
-import ogr
-import osr
+from osgeo import ogr
+from osgeo import osr
 import pytileproj.geometry as geometry
 import shapely.geometry
 
@@ -144,10 +144,10 @@ def xy2ij(x, y, gt):
         Row number in pixels.
     """
 
-    i = int(round(-1.0 * (gt[2] * gt[3] - gt[0] * gt[5] + gt[5] * x - gt[2] * y) /
-                  (gt[2] * gt[4] - gt[1] * gt[5])))
-    j = int(round(-1.0 * (-1 * gt[1] * gt[3] + gt[0] * gt[4] - gt[4] * x + gt[1] * y) /
-                  (gt[2] * gt[4] - gt[1] * gt[5])))
+    i = int(-1.0 * (gt[2] * gt[3] - gt[0] * gt[5] + gt[5] * x - gt[2] * y) /
+            (gt[2] * gt[4] - gt[1] * gt[5]))
+    j = int(-1.0 * (-1 * gt[1] * gt[3] + gt[0] * gt[4] - gt[4] * x + gt[1] * y) /
+            (gt[2] * gt[4] - gt[1] * gt[5]))
     return i, j
 
 

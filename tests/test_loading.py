@@ -35,10 +35,10 @@ Main code for testing to load data with a data cube.
 import os
 import shutil
 import unittest
-import osr
 import numpy as np
 import xarray as xr
 import dask.array as da
+from osgeo import osr
 
 # test data imports
 from tests.setup_test_data import setup_gt_test_data

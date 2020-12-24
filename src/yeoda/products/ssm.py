@@ -41,9 +41,10 @@ from yeoda.products.base import ProductDataCube
 class SSMDataCube(ProductDataCube):
     """
     Data cube defining a TUWGEO SSM/SSM-NOISE product.
+
     """
 
-    def __init__(self, root_dirpath, sres=500, continent='EU', dimensions=None, **kwargs):
+    def __init__(self, root_dirpath=None, sres=500, continent='EU', dimensions=None, **kwargs):
         """
         Constructor of class `SSMDataCube`.
 

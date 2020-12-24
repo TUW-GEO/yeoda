@@ -33,11 +33,11 @@ Main code for creating test data.
 
 # general packages
 import os
-import osr
 import itertools
 import numpy as np
 import pandas as pd
 import xarray as xr
+from osgeo import osr
 from datetime import datetime
 
 # import veranda and Equi7Grid
@@ -234,28 +234,86 @@ def setup_nc_single_test_data():
     return filepath, timestamps
 
 
-def setup_scatsarswi_single_test_data():
+def setup_sig0_test_data():
     """
-    Creates test data as a multi-time and multi-variable NetCDF file for SCATSAR-SWI data.
+    Collects SIG0 test data.
 
     Returns
     -------
-    str
-        NetCDF test data filepath.
-    list of datetime
-        List of timestamps as datetime objects.
+    str :
+        SIG0 test data file paths.
+    list of datetime :
+        List of timestamps related to the files as datetime objects.
+
+    """
+
+    root_dirpath = os.path.join(dirpath_test(), 'data', 'SIG0')
+    filepaths = [os.path.join(root_dirpath, "D20160129_171512--_SIG0-----_S1AIWGRDH1VVA_015_A0105_EU010M_E045N015T1.tif"),
+                 os.path.join(root_dirpath, "D20160129_171512--_SIG0-----_S1AIWGRDH1VHA_015_A0105_EU010M_E045N015T1.tif")]
+    timestamps = [pd.Timestamp(datetime(2016, 1, 29, 17, 15, 12))]*2
+
+    return filepaths, timestamps
+
+
+def setup_gmr_test_data():
+    """
+    Collects GMR test data.
+
+    Returns
+    -------
+    str :
+        GMR test data file paths.
+    list of datetime :
+        List of timestamps related to the files as datetime objects.
+
+    """
+
+    root_dirpath = os.path.join(dirpath_test(), 'data', 'GMR')
+    filepaths = [os.path.join(root_dirpath, "D20160129_171512--_GMR------_S1AIWGRDH1VVA_015_A0105_EU010M_E045N015T1.tif"),
+                 os.path.join(root_dirpath, "D20160129_171512--_GMR------_S1AIWGRDH1VHA_015_A0105_EU010M_E045N015T1.tif")]
+    timestamps = [pd.Timestamp(datetime(2016, 1, 29, 17, 15, 12))]*2
+
+    return filepaths, timestamps
+
+
+def setup_scatsarswi_test_data():
+    """
+    Collects SCATSAR-SWI test data.
+
+    Returns
+    -------
+    str :
+        SCATSAR-SWI test data file paths.
+    list of datetime :
+        List of timestamps related to the files as datetime objects.
+
     """
 
     root_dirpath = os.path.join(dirpath_test(), 'data', 'SCATSAR_SWI')
+    filepaths = [os.path.join(root_dirpath, "M20201128_120000--_SWI------_SCATSAR-46VV-_---_C0418_EU500M_E042N030T6.nc")]
+    timestamps = [pd.Timestamp(datetime(2020, 11, 28, 12))]
 
-    # create target folders
-    dirpath = os.path.join(root_dirpath, 'C0418', 'EQUI7_EU500M', 'E042N030T6', 'swi')
+    return filepaths, timestamps
 
-    filepath = os.path.join(dirpath, "M20201128_120000--_SWI------_SCATSAR-46VV-_---_C0418_EU500M_E042N030T6.nc")
-    timestamps = [datetime(2020, 11, 28)]
-    timestamps = [pd.Timestamp(timestamp.strftime("%Y%m%d")) for timestamp in timestamps]
 
-    return root_dirpath, filepath, timestamps
+def setup_ssm_test_data():
+    """
+    Collects SSM test data.
+
+    Returns
+    -------
+    str :
+        SSM test data file paths.
+    list of datetime :
+        List of timestamps related to the files as datetime objects.
+
+    """
+
+    root_dirpath = os.path.join(dirpath_test(), 'data', 'SSM')
+    filepaths = [os.path.join(root_dirpath, "D20170216_051650--_SSM------_S1BIWGRDH1VVD_095_C0103_EU500M_E048N012T6.tif")]
+    timestamps = [pd.Timestamp(datetime(2017, 2, 16, 5, 16, 50))]
+
+    return filepaths, timestamps
 
 
 def roi_test():

@@ -33,10 +33,10 @@ Main code for testing general functionalities of a data cube.
 
 # general imports
 import os
-import ogr
 import shutil
 import unittest
 import numpy as np
+from osgeo import ogr
 
 from tests.setup_test_data import setup_gt_test_data
 from tests.setup_test_data import dirpath_test

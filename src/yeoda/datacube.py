@@ -758,10 +758,10 @@ class EODataCube:
             if self._ds is None and self.status != "stable":
                 file_ts = {'filenames': list(self.filepaths)}
                 self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
-            data = self.decode(self._ds.read_ts(min_col, min_row, col_size=col_size, row_size=row_size), **decode_kwargs)
+            data = self._ds.read_ts(min_col, min_row, col_size=col_size, row_size=row_size)
             if data is None:
                 raise LoadingDataError()
-
+            data = self.decode(data, **decode_kwargs)
             if apply_mask:
                 data = np.ma.array(data, mask=np.stack([data_mask]*data.shape[0], axis=0))
 
@@ -777,10 +777,10 @@ class EODataCube:
                 self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
             time_units = self._ds.time_units
             data_ar = self._ds.read()[str(band)][:, min_row:max_row, min_col:max_col]
-            data_ar.data = self.decode(data_ar.data, **decode_kwargs)
-
             if data_ar is None:
                 raise LoadingDataError()
+
+            data_ar.data = self.decode(data_ar.data, **decode_kwargs)
             if apply_mask:
                 data_ar.data = np.ma.array(data_ar.data, mask=np.stack([data_mask] * data_ar.data.shape[0], axis=0))
             data = data_ar.to_dataset()
@@ -868,10 +868,10 @@ class EODataCube:
                     file_ts = {'filenames': list(self.filepaths)}
                     self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
 
-                data_i = self.decode(self._ds.read_ts(col, row, col_size=col_size, row_size=row_size), **decode_kwargs)
+                data_i = self._ds.read_ts(col, row, col_size=col_size, row_size=row_size)
                 if data_i is None:
                     raise LoadingDataError()
-                data.append(data_i)
+                data.append(self.decode(data_i), **decode_kwargs)
                 if row_size != 1 and col_size != 1:
                     max_col = col + col_size
                     max_row = row + row_size
@@ -894,6 +894,8 @@ class EODataCube:
                 else:
                     data_ar = self._ds.read()[str(band)][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
 
+                if data_ar is None:
+                    raise LoadingDataError()
                 data_ar.data = self.decode(data_ar.data, **decode_kwargs)
                 data.append(data_ar.to_dataset())
             else:
@@ -979,7 +981,7 @@ class EODataCube:
                 if self._ds is None and self.status != "stable":
                     file_ts = {'filenames': self.filepaths}
                     self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
-                data_i = self.decode(self._ds.read_ts(col, row))
+                data_i = self._ds.read_ts(col, row)
                 if data_i is None:
                     raise LoadingDataError()
 

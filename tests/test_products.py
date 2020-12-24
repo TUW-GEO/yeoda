@@ -39,10 +39,12 @@ from yeoda.products.preprocessed import SIG0DataCube
 from yeoda.products.preprocessed import GMRDataCube
 from yeoda.products.scatsar_swi import SCATSARSWIDataCube
 from yeoda.products.ssm import SSMDataCube
+from yeoda.products.parameter import ParameterDataCube
 
 # import test data
 from tests.setup_test_data import setup_sig0_test_data
 from tests.setup_test_data import setup_gmr_test_data
+from tests.setup_test_data import setup_parameter_test_data
 from tests.setup_test_data import setup_scatsarswi_test_data
 from tests.setup_test_data import setup_ssm_test_data
 
@@ -111,6 +113,33 @@ class GMRDataCubeTester(unittest.TestCase):
     def test_check_timestamps(self):
         """ Tests if data and data cube time stamps match. """
         assert np.all(self.timestamps == self.dc['time'])
+
+
+class ParameterDataCubeTester(unittest.TestCase):
+    """ Responsible for testing the `ParameterDataCube` setup. """
+
+    def setUp(self):
+        """ Retrieves test data file paths and creates an `ParameterDataCube`. """
+
+        self.filepaths, self.start_times, self.end_times = setup_parameter_test_data()
+
+        self.dc = ParameterDataCube(filepaths=self.filepaths, sres=10, continent='EU')
+
+    def test_loading_data(self):
+        """ Tests proper loading and decoding of data. """
+        poi_x, poi_y = 5200996.1, 1699971.2
+
+        # check data values
+        result = self.dc.load_by_coords(poi_x, poi_y, band=1, dtype="numpy")
+        assert np.array_equal(float(result), 42.)
+        # check no data values
+        result = self.dc.load_by_coords(poi_x, poi_y - 5., band=1, dtype="numpy")
+        assert np.all(np.isnan(result))
+
+    def test_check_timestamps(self):
+        """ Tests if data and data cube time stamps match. """
+        assert np.all(self.start_times == self.dc['stime'])
+        assert np.all(self.end_times == self.dc['etime'])
 
 
 class SCATSARSWIDataCubeTester(unittest.TestCase):

@@ -3,15 +3,11 @@ channels:
   - conda-forge
 dependencies:
   - python=3.6
-  - gdal=2.4.3
-  - cftime<1.1
+  - gdal=2.4
   - geopandas
-  - regex
-  - netCDF4
-  - xarray
-  - dask
   - pip
   - pip:
+    - regex
     - pytileproj==0.0.12
     - Equi7Grid==0.0.10
     - veranda==0.1.0

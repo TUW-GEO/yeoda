@@ -1,4 +1,4 @@
-# Copyright (c) 2019, Vienna University of Technology (TU Wien), Department of
+# Copyright (c) 2020, Vienna University of Technology (TU Wien), Department of
 # Geodesy and Geoinformation (GEO).
 # All rights reserved.
 #
@@ -28,37 +28,34 @@
 # policies, either expressed or implied, of the FreeBSD Project.
 
 """
-Main code for creating a TUWGEO product data cube.
+Main code for creating a TUWGEO parameter data cube.
 """
 
-# import geopathfinder modules for file and folder naming convention
-from geopathfinder.naming_conventions.sgrt_naming import SgrtFilename
-from geopathfinder.naming_conventions.sgrt_naming import sgrt_tree
+# general packages
+import numpy as np
 
-# import TUWGEO standard grid
-from equi7grid.equi7grid import Equi7Grid
-
-# import basic data cube from yeoda
-from yeoda.datacube import EODataCube
+# import TUWGEO product data cube
+from yeoda.products.base import ProductDataCube
 
 
-class ProductDataCube(EODataCube):
+class ParameterDataCube(ProductDataCube):
     """
-    Data cube defining a TUWGEO product (preferably based on the Equi7 grid system).
+    Data cube defining a TUWGEO parameter product.
+    A parameter data cube has a scaling factor of 10 and a no data value of -9999.
+
     """
 
     def __init__(self, root_dirpath=None, var_names=None, sres=10, continent='EU', dimensions=None,
-                 file_pattern=None, **kwargs):
-
+                 file_pattern=".tif$", **kwargs):
         """
-        Constructor of class `ProductDataCube`.
+        Constructor of class `ParameterDataCube`.
 
         Parameters
         ----------
         root_dirpath : str, optional
             Root directory path to the SGRT directory tree.
         var_names : list, optional
-            SGRT Variable names , e.g. ["SIG0", "SSM"].
+            SGRT Variable names , e.g. ["TMENPLIA", "TMENSIG0"].
         sres : int, optional
             Spatial sampling in grid units, e.g. 10, 500 (default is 10).
         continent : str, optional
@@ -66,46 +63,60 @@ class ProductDataCube(EODataCube):
         dimensions : list, optional
             List of filename parts to use as dimensions. The strings have to match with the keys of the `SgrtFilename`
             fields definition.
+        inventory : GeoDataFrame, optional
+            Contains information about the dimensions (columns) and each filepath (rows).
         file_pattern : str
             Pattern to match/only select certain file names.
         **kwargs
             Arbitrary keyword arguments (e.g. containing 'inventory' or 'grid').
+
+        """
+        dimensions = [] if dimensions is None else dimensions
+        if "stime" not in dimensions:
+            dimensions.append("stime")
+        if "etime" not in dimensions:
+            dimensions.append("etime")
+        tdim_name = kwargs.pop('tdim_name', 'stime')
+        super().__init__(root_dirpath=root_dirpath, var_names=var_names, sres=sres, continent=continent,
+                         dimensions=dimensions, file_pattern=file_pattern, tdim_name=tdim_name, **kwargs)
+
+    def encode(self, data, **kwargs):
+        """
+        Joint encoding function for TUWGEO parameter data.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Input data.
+
+        Returns
+        -------
+        np.ndarray
+            Encoded data.
+
         """
 
-        if root_dirpath is not None:
-            dir_tree = sgrt_tree(root_dirpath, register_file_pattern=file_pattern)
-        else:
-            dir_tree = kwargs.get('dir_tree', None)
+        data *= 10
+        data[np.isnan(data)] = -9999
+        data.astype(np.int16)
+        return data
 
-        filepaths = kwargs.get('filepaths', None)
-        if filepaths is None and dir_tree is not None:
-            filepaths = dir_tree.file_register
+    def decode(self, data, **kwargs):
+        """
+        Joint decoding function for TUWGEO parameter data.
 
-        inventory = kwargs.get('inventory', None)
+        Parameters
+        ----------
+        data : np.ndarray
+            Encoded input data.
 
-        # ensure there is a variable dimension
-        if dimensions is None:
-            dimensions = ['var_name']
-        elif "var_name" not in dimensions:
-            dimensions.append('var_name')
+        Returns
+        -------
+        np.ndarray
+            Decoded data based on native units.
 
-        grid = kwargs.get('grid', Equi7Grid(sres).__getattr__(continent))
+        """
 
-        # add spatial and temporal dimension
-        if 'tile_name' not in dimensions:
-            dimensions.append('tile_name')
-        sdim_name = kwargs.get('sdim_name', 'tile_name')
-        tdim_name = kwargs.get('tdim_name', 'time')
-        if (tdim_name == 'time') and 'time' not in dimensions:
-            dimensions.append('time')
-
-        super().__init__(inventory=inventory, filepaths=filepaths, dimensions=dimensions,
-                         smart_filename_class=SgrtFilename, grid=grid, sdim_name=sdim_name, tdim_name=tdim_name)
-
-        # filter variable names
-        if var_names is not None:
-            self.filter_by_dimension(var_names, name='var_name', inplace=True)
-
-        # file pattern has not been applied yet and file pattern is given
-        if dir_tree is None and file_pattern is not None:
-            self.filter_files_with_pattern(file_pattern, inplace=True)
+        data = data.astype(float)
+        data[data == -9999] = None
+        return data / 10.

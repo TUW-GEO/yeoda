@@ -276,6 +276,29 @@ def setup_gmr_test_data():
     return filepaths, timestamps
 
 
+def setup_parameter_test_data():
+    """
+    Collects parameter test data.
+
+    Returns
+    -------
+    str :
+        Parameter test data file paths. In this case, only TMENPLIA files are used.
+    list of datetime :
+        Start timestamps related to the files as datetime objects.
+    list of datetime :
+        End timestamps related to the files as datetime objects.
+
+    """
+
+    root_dirpath = os.path.join(dirpath_test(), 'data', 'TMENPLIA')
+    filepaths = [os.path.join(root_dirpath, "M20160101_20171231_TMENPLIA-_S1-IWGRDH1---_022_B0104_EU010M_E052N016T1.tif")]
+    start_timestamps = [pd.Timestamp(datetime(2016, 1, 1))]
+    end_timestamps = [pd.Timestamp(datetime(2017, 12, 31))]
+
+    return filepaths, start_timestamps, end_timestamps
+
+
 def setup_scatsarswi_test_data():
     """
     Collects SCATSAR-SWI test data.

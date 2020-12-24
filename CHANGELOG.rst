@@ -7,6 +7,7 @@ Version 0.2.0
 
 - fixed major bugs, like not-working product data cube classes and wrong rounding of pixel coordinates
 - added data cube for SCATSAR-SWI data
+- added data cube for Parameter data, e.g. TMENPLIA
 - switched to newest version of geopathfinder and veranda
 
 Version 0.1.4

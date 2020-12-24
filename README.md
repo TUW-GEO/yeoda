@@ -32,9 +32,12 @@ To install *yeoda* via pip in your own environment, use:
 ```
 pip install yeoda
 ```
-**ATTENTION**: GDAL needs more OS support and has more dependencies then other packages and can therefore not be installed solely via pip.
-Please have a look at https://pypi.org/project/GDAL/ what requirements are needed. Thus, for a fresh setup, an existing environment 
-with a Python and GDAL installation are expected.
+**ATTENTION**: *GDAL* and *geopandas* need more OS support and have more dependencies then other packages and can therefore not be installed solely via pip.
+Thus, for a fresh setup, an existing environment with a *Python*, a *GDAL* and a *geopandas* installation are expected.
+To create such an environment, you can run:
+```
+conda create -n "yeoda" -c conda-forge python=3.6 gdal=2.4 geopandas
+```
 
 ### conda
 The packages also comes along with two conda environments, one for Linux (``conda_env_linux.yml``) and one for Windows (``conda_env_windows.yml``). 

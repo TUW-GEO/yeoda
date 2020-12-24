@@ -50,6 +50,3 @@ MANIFEST
 
 # user scripts
 .scripts
-
-# testdata
-/tests/data/

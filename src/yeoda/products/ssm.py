@@ -41,9 +41,10 @@ from yeoda.products.base import ProductDataCube
 class SSMDataCube(ProductDataCube):
     """
     Data cube defining a TUWGEO SSM/SSM-NOISE product.
+
     """
 
-    def __init__(self, root_dirpath, sres=500, continent='EU', dimensions=None, **kwargs):
+    def __init__(self, root_dirpath=None, sres=500, continent='EU', dimensions=None, **kwargs):
         """
         Constructor of class `SSMDataCube`.
 
@@ -66,10 +67,10 @@ class SSMDataCube(ProductDataCube):
             Arbitrary keyword arguments (e.g. containing 'inventory' or 'grid').
         """
 
-        super().__init__(root_dirpath, ["SSM", "SSM-NOISE"], spres=sres, continent=continent, dimensions=dimensions,
+        super().__init__(root_dirpath, ["SSM", "SSM-NOISE"], sres=sres, continent=continent, dimensions=dimensions,
                          **kwargs)
 
-    def encode(self, data):
+    def encode(self, data, **kwargs):
         """
         Encoding function for TUWGEO SSM/SSM-NOISE data.
 
@@ -86,9 +87,10 @@ class SSMDataCube(ProductDataCube):
 
         data *= 2
         data[np.isnan(data)] = 255
+        data.astype(np.uint8)
         return data
 
-    def decode(self, data):
+    def decode(self, data, **kwargs):
         """
         Decoding function for TUWGEO SSM/SSM-NOISE data.
 
@@ -104,5 +106,5 @@ class SSMDataCube(ProductDataCube):
         """
 
         data = data.astype(float)
-        data[data > 200] = None
+        data[data > 200] = np.nan
         return data / 2.

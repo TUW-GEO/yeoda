@@ -35,6 +35,7 @@ Main code for creating data cubes.
 import copy
 import os
 import re
+import netCDF4
 import pandas as pd
 import numpy as np
 import xarray as xr
@@ -662,7 +663,8 @@ class EODataCube:
         return self.split_by_dimension(values, expressions, name=self.tdim_name)
 
     @_set_status('stable')
-    def load_by_geom(self, geom, sref=None, band=1, apply_mask=False, dtype="xarray", origin='ul'):
+    def load_by_geom(self, geom, sref=None, band=1, apply_mask=False, dtype="xarray", origin='ul',
+                     decode_kwargs=None):
         """
         Loads data according to a given geometry.
 
@@ -691,6 +693,8 @@ class EODataCube:
                 - lower right ("lr")
                 - lower left ("ll")
                 - center ("c")
+        decode_kwargs: dict, optional
+            Keyword arguments for the decoder.
 
         Returns
         -------
@@ -700,6 +704,8 @@ class EODataCube:
 
         if self.inventory is None:  # no data given
             return None
+
+        decode_kwargs = {} if decode_kwargs is None else decode_kwargs
 
         if self.grid:
             if self.sdim_name not in self.dimensions:
@@ -752,10 +758,10 @@ class EODataCube:
             if self._ds is None and self.status != "stable":
                 file_ts = {'filenames': list(self.filepaths)}
                 self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
-            data = self.decode(self._ds.read_ts(min_col, min_row, col_size=col_size, row_size=row_size))
+            data = self._ds.read_ts(min_col, min_row, col_size=col_size, row_size=row_size)
             if data is None:
                 raise LoadingDataError()
-
+            data = self.decode(data, **decode_kwargs)
             if apply_mask:
                 data = np.ma.array(data, mask=np.stack([data_mask]*data.shape[0], axis=0))
 
@@ -764,23 +770,29 @@ class EODataCube:
             x_traffo, y_traffo = inv_traffo_fun(cols_traffo, rows_traffo)
             xs = x_traffo[row_size:]
             ys = y_traffo[:row_size]
+            data = self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
         elif file_type == "NetCDF":
             if self._ds is None and self.status != "stable":
                 file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
-                self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
-            data = self.decode(self._ds.read()[str(band)][:, min_row:max_row, min_col:max_col].to_dataset())
-            if data is None:
+                self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
+            time_units = self._ds.time_units
+            data_ar = self._ds.read()[str(band)][:, min_row:max_row, min_col:max_col]
+            if data_ar is None:
                 raise LoadingDataError()
 
+            data_ar.data = self.decode(data_ar.data, **decode_kwargs)
             if apply_mask:
-                data.data = np.ma.array(data.data, mask=np.stack([data_mask] * data.data.shape[0], axis=0))
+                data_ar.data = np.ma.array(data_ar.data, mask=np.stack([data_mask] * data_ar.data.shape[0], axis=0))
+            data = data_ar.to_dataset()
+            data = self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band, time_units=time_units)
         else:
             raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
+        return data
 
     @_set_status('stable')
-    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band=1, dtype="xarray", origin="ul"):
+    def load_by_pixels(self, rows, cols, row_size=1, col_size=1, band=1, dtype="xarray", origin="ul",
+                       decode_kwargs=None):
         """
         Loads data according to given pixel numbers, i.e. the row and column numbers and optionally a certain
         pixel window (`row_size` and `col_size`).
@@ -797,10 +809,6 @@ class EODataCube:
             Number of columns to read (counts from input argument `cols`, default is 1).
         band : int or str, optional
             Band number or name (default is 1).
-        spatial_dim_name : str, optional
-            Name of the spatial dimension (default: 'tile').
-        temporal_dim_name : str, optional
-            Name of the temporal dimension (default: 'time').
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
@@ -813,6 +821,8 @@ class EODataCube:
                 - lower right ("lr")
                 - lower left ("ll")
                 - center ("c")
+        decode_kwargs: dict, optional
+            Keyword arguments for the decoder.
 
         Returns
         -------
@@ -822,6 +832,8 @@ class EODataCube:
 
         if self.inventory is None:  # no data given
             return None
+
+        decode_kwargs = {} if decode_kwargs is None else decode_kwargs
 
         if not isinstance(rows, list):
             rows = [rows]
@@ -842,6 +854,7 @@ class EODataCube:
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
         file_type = get_file_type(self.filepaths[0])
 
+        time_units = "days since 1900-01-01 00:00:00"
         n = len(rows)
         data = []
         xs = []
@@ -855,10 +868,10 @@ class EODataCube:
                     file_ts = {'filenames': list(self.filepaths)}
                     self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
 
-                data_i = self.decode(self._ds.read_ts(col, row, col_size=col_size, row_size=row_size))
+                data_i = self._ds.read_ts(col, row, col_size=col_size, row_size=row_size)
                 if data_i is None:
                     raise LoadingDataError()
-                data.append(data_i)
+                data.append(self.decode(data_i), **decode_kwargs)
                 if row_size != 1 and col_size != 1:
                     max_col = col + col_size
                     max_row = row + row_size
@@ -874,19 +887,24 @@ class EODataCube:
             elif file_type == "NetCDF":
                 if self._ds is None and self.status != "stable":
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
-                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
+                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
+                time_units = self._ds.time_units
                 if row_size != 1 and col_size != 1:
-                    data_i = self.decode(self._ds.read()[str(band)][:, row:(row + row_size), col:(col + col_size)].to_dataset())
+                    data_ar = self._ds.read()[str(band)][:, row:(row + row_size), col:(col + col_size)]
                 else:
-                    data_i = self.decode(self._ds.read()[str(band)][:, row:(row + 1), col:(col + 1)].to_dataset())  # +1 to keep the dimension
-                data.append(data_i)
+                    data_ar = self._ds.read()[str(band)][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
+
+                if data_ar is None:
+                    raise LoadingDataError()
+                data_ar.data = self.decode(data_ar.data, **decode_kwargs)
+                data.append(data_ar.to_dataset())
             else:
                 raise FileTypeUnknown(file_type)
 
-        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, time_units=time_units)
 
     @_set_status('stable')
-    def load_by_coords(self, xs, ys, sref=None, band=1, dtype="xarray", origin="ul"):
+    def load_by_coords(self, xs, ys, sref=None, band=1, dtype="xarray", origin="ul", decode_kwargs=None):
         """
         Loads data as a 1-D array according to a given coordinate.
 
@@ -900,10 +918,6 @@ class EODataCube:
             Spatial reference referring to the world system coordinates `x` and `y`.
         band : int or str, optional
             Band number or name (default is 1).
-        spatial_dim_name : str, optional
-            Name of the spatial dimension (default: 'tile').
-        temporal_dim_name : str, optional
-            Name of the temporal dimension (default: 'time').
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
@@ -916,6 +930,8 @@ class EODataCube:
                 - lower right ("lr")
                 - lower left ("ll")
                 - center ("c")
+        decode_kwargs: dict, optional
+            Keyword arguments for the decoder.
 
         Returns
         -------
@@ -925,6 +941,8 @@ class EODataCube:
 
         if self.inventory is None:  # no data given
             return None
+
+        decode_kwargs = {} if decode_kwargs is None else decode_kwargs
 
         if not isinstance(xs, list):
             xs = [xs]
@@ -943,6 +961,7 @@ class EODataCube:
         else:
             this_sref, this_gt = self.__get_georef()
 
+        time_units = "days since 1900-01-01 00:00:00"
         n = len(xs)
         data = []
         for i in range(n):
@@ -962,22 +981,30 @@ class EODataCube:
                 if self._ds is None and self.status != "stable":
                     file_ts = {'filenames': self.filepaths}
                     self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
-                data_i = self.decode(self._ds.read_ts(col, row))
+                data_i = self._ds.read_ts(col, row)
+                if data_i is None:
+                    raise LoadingDataError()
+
+                data_i = self.decode(data_i, **decode_kwargs)
             elif file_type == "NetCDF":
                 if self._ds is None and self.status != "stable":
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})
-                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single')
-                data_i = self.decode(self._ds.read()[str(band)][:, row:(row + 1), col:(col + 1)].to_dataset())  # +1 to keep the dimension
+                    self._ds = NcRasterTimeStack(file_ts=file_ts, stack_size='single', auto_decode=False)
+                time_units = self._ds.time_units
+                data_ar = self._ds.read()[str(band)][:, row:(row + 1), col:(col + 1)]  # +1 to keep the dimension
+                if data_ar is None:
+                    raise LoadingDataError()
+
+                data_ar.data = self.decode(data_ar.data, **decode_kwargs)
+                data_i = data_ar.to_dataset()
             else:
                 raise FileTypeUnknown(file_type)
 
-            if data_i is None:
-                raise LoadingDataError()
             data.append(data_i)
 
-        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band)
+        return self.__convert_dtype(data, dtype, xs=xs, ys=ys, band=band, time_units=time_units)
 
-    def encode(self, data):
+    def encode(self, data, **kwargs):
         """
         Encodes an array.
 
@@ -985,6 +1012,8 @@ class EODataCube:
         ----------
         data : numpy, dask or xarray array
             Data array.
+        **kwargs
+            Keyword arguments for encoding function.
 
         Returns
         -------
@@ -994,7 +1023,7 @@ class EODataCube:
 
         return data
 
-    def decode(self, data):
+    def decode(self, data, **kwargs):
         """
         Decodes an encoded array to retrieve the values in native units.
 
@@ -1002,6 +1031,8 @@ class EODataCube:
         ----------
         data : numpy, dask or xarray array
             Encoded array.
+        **kwargs
+            Keyword arguments for decoding function.
 
         Returns
         -------
@@ -1146,7 +1177,7 @@ class EODataCube:
 
         self._ds.close()
 
-    def __convert_dtype(self, data, dtype, xs=None, ys=None, band=1):
+    def __convert_dtype(self, data, dtype, xs=None, ys=None, band=1, time_units='days since 1900-01-01 00:00:00'):
         """
         Converts `data` into an array-like object defined by `dtype`. It supports NumPy arrays, Xarray arrays and
         Pandas data frames.
@@ -1165,6 +1196,9 @@ class EODataCube:
             List of world system coordinates in Y direction.
         band : int or str, optional
             Band number or name (default is 1).
+        time_units : str, optional
+            Time units definition for NetCDF4's `num2date` function.
+            Defaults to 'days since 1900-01-01 00:00:00'.
 
         Returns
         -------
@@ -1190,12 +1224,18 @@ class EODataCube:
             elif isinstance(data, list) and isinstance(data[0], xr.Dataset):
                 converted_data = xr.merge(data)
                 converted_data.attrs = data[0].attrs
+                if converted_data['time'].dtype == 'float':
+                    conv_timestamps = netCDF4.num2date(converted_data['time'], time_units)
+                    converted_data = converted_data.assign_coords({'time': conv_timestamps})
             elif isinstance(data, np.ndarray):
                 xr_ar = xr.DataArray(data, coords={self.tdim_name: timestamps, 'y': ys, 'x': xs},
                                      dims=[self.tdim_name, 'y', 'x'])
                 converted_data = xr.Dataset(data_vars={str(band): xr_ar})
             elif isinstance(data, xr.Dataset):
                 converted_data = data
+                if converted_data['time'].dtype == 'float':
+                    conv_timestamps = netCDF4.num2date(converted_data['time'], time_units)
+                    converted_data = converted_data.assign_coords({'time': conv_timestamps})
             else:
                 raise DataTypeUnknown(type(data), dtype)
         elif dtype == "numpy":

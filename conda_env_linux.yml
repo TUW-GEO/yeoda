@@ -3,16 +3,12 @@ channels:
   - conda-forge
 dependencies:
   - python=3.6
-  - gdal=2.4.3
-  - cftime<1.1
-  - regex
-  - netCDF4
-  - xarray
-  - dask
+  - gdal=2.4
+  - geopandas
   - pip
   - pip:
-    - geopandas>=0.6.1
+    - regex
     - pytileproj==0.0.12
     - Equi7Grid==0.0.10
-    - git+https://github.com/TUW-GEO/veranda.git
-    - git+https://github.com/TUW-GEO/geopathfinder.git
+    - veranda==0.1.0
+    - geopathfinder==0.0.7

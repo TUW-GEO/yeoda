@@ -1,8 +1,2 @@
-gdal==2.4.3
-geopandas
-regex
-pytileproj==0.0.12
-Equi7Grid==0.0.10
-veranda==0.1.0
-geopathfinder==0.0.7
+
 

@@ -871,7 +871,7 @@ class EODataCube:
                 data_i = self._ds.read_ts(col, row, col_size=col_size, row_size=row_size)
                 if data_i is None:
                     raise LoadingDataError()
-                data.append(self.decode(data_i), **decode_kwargs)
+                data.append(self.decode(data_i, **decode_kwargs))
                 if row_size != 1 and col_size != 1:
                     max_col = col + col_size
                     max_row = row + row_size

@@ -2,6 +2,11 @@
 Changelog
 =========
 
+Version 0.2.1
+=============
+
+- bug fix: decoding after load_by_pixels()
+
 Version 0.2.0
 =============
 

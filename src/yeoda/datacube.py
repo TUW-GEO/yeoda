@@ -770,6 +770,8 @@ class EODataCube:
             x_traffo, y_traffo = inv_traffo_fun(cols_traffo, rows_traffo)
             xs = x_traffo[row_size:]
             ys = y_traffo[:row_size]
+            if len(data.shape) == 2:  # ensure that the data is always forwarded as a 3D array
+                data = data[None, :, :]
             data = self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
         elif file_type == "NetCDF":
             if self._ds is None and self.status != "stable":
@@ -871,7 +873,10 @@ class EODataCube:
                 data_i = self._ds.read_ts(col, row, col_size=col_size, row_size=row_size)
                 if data_i is None:
                     raise LoadingDataError()
-                data.append(self.decode(data_i, **decode_kwargs))
+                data_i = self.decode(data_i, **decode_kwargs)
+                if len(data_i.shape) == 2:  # ensure that the data is always forwarded as a 3D array
+                    data_i = data_i[None, :, :]
+                data.append(data_i)
                 if row_size != 1 and col_size != 1:
                     max_col = col + col_size
                     max_row = row + row_size
@@ -986,6 +991,8 @@ class EODataCube:
                     raise LoadingDataError()
 
                 data_i = self.decode(data_i, **decode_kwargs)
+                if len(data_i.shape) == 2:  # ensure that the data is always forwarded as a 3D array
+                    data_i = data_i[None, :, :]
             elif file_type == "NetCDF":
                 if self._ds is None and self.status != "stable":
                     file_ts = pd.DataFrame({'filenames': list(self.filepaths)})

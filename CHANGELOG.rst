@@ -2,6 +2,11 @@
 Changelog
 =========
 
+Version 0.2.2
+=============
+
+- bug fix: 2D arrays/datacubes are now always converted to 3D
+
 Version 0.2.1
 =============
 

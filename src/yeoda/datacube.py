@@ -45,7 +45,6 @@ from collections import OrderedDict
 from osgeo import osr
 from osgeo import ogr
 import shapely.wkt
-from shapely.geometry import Point
 from geopandas import GeoSeries
 from geopandas import GeoDataFrame
 from geopandas.base import is_geometry_type
@@ -62,6 +61,8 @@ from yeoda.utils import any_geom2ogr_geom
 from yeoda.utils import xy2ij
 from yeoda.utils import ij2xy
 from yeoda.utils import boundary
+from utils import ensure_is_list, draw_proj_polygon_on_mask
+#from src.yeoda.utils import ensure_is_list
 
 # load classes from yeoda's error module
 from yeoda.errors import IOClassNotFound
@@ -471,8 +472,7 @@ class EODataCube:
             `EODataCube` object with a filtered inventory according to the given tile names.
         """
 
-        if not isinstance(tilenames, (tuple, list)):
-            tilenames = [tilenames]
+        tilenames = ensure_is_list(tilenames, allow_tuples=True)
 
         if use_grid:
             if self.grid is not None:
@@ -578,9 +578,7 @@ class EODataCube:
         monthly_eodcs = []
         for yearly_eodc in yearly_eodcs:
             if months is not None:
-                yearly_months = months
-                if not isinstance(months, list):
-                    yearly_months = [yearly_months]
+                yearly_months = ensure_is_list(months)
                 # initialise empty dict keeping track of the months
                 timestamps_months = {}
                 for month in yearly_months:
@@ -631,8 +629,7 @@ class EODataCube:
 
         sort = False
         if years:
-            if not isinstance(years, list):
-                years = [years]
+            years = ensure_is_list(years)
             # initialise empty dict keeping track of the years
             timestamps_years = {}
             for year in years:
@@ -664,6 +661,23 @@ class EODataCube:
         return self.split_by_dimension(values, expressions, name=self.tdim_name)
 
     def generate_mask(self, geom, sref=None):
+        """
+        Generates a binary mask of a geometry with a given spatial reference system.
+        The mask has the size of the geometry's bounding box.
+
+        Parameters
+        ----------
+        geom : OGR Geometry or Shapely Geometry or list or tuple
+            A geometry defining the region of interest. If it is of type list/tuple representing the extent
+            (i.e. [x_min, y_min, x_max, y_max]), `sref` has to be given to transform the extent into a
+            georeferenced polygon.
+        sref : osr.SpatialReference, optional
+            Spatial reference of the given region of interest `geom`.
+
+        Returns
+        -------
+        2-dimensional np.array instance filled with two distinct values (1 - inside geometry, 0 - everything else)
+        """
         if self.grid:
             if self.sdim_name not in self.dimensions:
                 raise DimensionUnkown(self.sdim_name)
@@ -690,17 +704,13 @@ class EODataCube:
         geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
         mask_img = Image.new('1', (col_size, row_size), 0)
         if geom_roi.geom_type == "Polygon":
-            coords_untransformed = list(zip(*geom_roi.exterior.coords.xy))
-            coords_transformed = [(traffo_fun(x, y)) for (x, y) in coords_untransformed]
-            coords_transformed = [(i - min_col, j - min_row) for i, j in coords_transformed]
-            ImageDraw.Draw(mask_img).polygon([tuple(point) for point in coords_transformed], outline=1, fill=1)
+            draw_proj_polygon_on_mask(mask_img, geom_roi, min_col=min_col, min_row=min_row,
+                                           transformation_fn=traffo_fun)
         elif geom_roi.geom_type == "MultiPolygon":
             for poly in list(geom_roi):
-                coords_untransformed = list(zip(*poly.exterior.coords.xy))
-                coords_transformed = [(traffo_fun(x, y)) for (x, y) in coords_untransformed]
-                coords_transformed = [(i - min_col, j - min_row) for i, j in coords_transformed]
-                ImageDraw.Draw(mask_img).polygon([tuple(point) for point in coords_transformed], outline=1, fill=1)
-        return np.invert(np.array(mask_img))
+                draw_proj_polygon_on_mask(mask_img, poly, min_col=min_col, min_row=min_row,
+                                               transformation_fn=traffo_fun)
+        return np.array(mask_img)
 
     @_set_status('stable')
     def load_by_geom(self, geom, sref=None, band=1, apply_mask=False, dtype="xarray", origin='ul',
@@ -710,7 +720,7 @@ class EODataCube:
 
         Parameters
         ----------
-        geom : OGR Geometry or Shapely Geometry or list or tuple, optional
+        geom : OGR Geometry or Shapely Geometry or list or tuple
             A geometry defining the region of interest. If it is of type list/tuple representing the extent
             (i.e. [x_min, y_min, x_max, y_max]), `sref` has to be given to transform the extent into a
             georeferenced polygon.
@@ -720,7 +730,7 @@ class EODataCube:
             Band number or name (default is 1).
         apply_mask : bool, optional
             If true, a numpy mask array with a mask excluding (=1) all pixels outside `geom` (=0) will be created
-            (default is True).
+            (default is False).
         dtype : str
             Data type of the returned array-like structure (default is 'xarray'). It can be:
                 - 'xarray': loads data as an xarray.DataSet
@@ -742,7 +752,7 @@ class EODataCube:
             Data as an array-like object.
         """
 
-        if self.inventory is None:  # no data given
+        if self.inventory is None or self.inventory.empty:  # no data given
             return None
 
         decode_kwargs = {} if decode_kwargs is None else decode_kwargs
@@ -771,7 +781,7 @@ class EODataCube:
         # clip region of interest to tile boundary
         boundary_ogr = ogr.CreateGeometryFromWkt(self.boundary.wkt)
         geom_roi = geom_roi.Intersection(boundary_ogr)
-        if geom_roi.ExportToWkt() == 'GEOMETRYCOLLECTION EMPTY':
+        if geom_roi.IsEmpty():
             raise Exception('The given geometry does not intersect with the tile boundaries.')
         geom_roi.AssignSpatialReference(this_sref)
 
@@ -783,7 +793,7 @@ class EODataCube:
         row_size = max_row - min_row
 
         if apply_mask:
-            data_mask = self.generate_mask(geom, sref=sref)
+            data_mask = np.invert(self.generate_mask(geom, sref=sref))
 
         file_type = get_file_type(self.filepaths[0])
         xs = None
@@ -872,15 +882,13 @@ class EODataCube:
             Data as an array-like object.
         """
 
-        if self.inventory is None:  # no data given
+        if self.inventory is None or self.inventory.empty:  # no data given
             return None
 
         decode_kwargs = {} if decode_kwargs is None else decode_kwargs
 
-        if not isinstance(rows, list):
-            rows = [rows]
-        if not isinstance(cols, list):
-            cols = [cols]
+        rows = ensure_is_list(rows)
+        cols = ensure_is_list(cols)
 
         if self.grid:
             if self.sdim_name not in self.dimensions:
@@ -984,15 +992,13 @@ class EODataCube:
             Data as an array-like object.
         """
 
-        if self.inventory is None:  # no data given
+        if self.inventory is None or self.inventory.empty:  # no data given
             return None
 
         decode_kwargs = {} if decode_kwargs is None else decode_kwargs
 
-        if not isinstance(xs, list):
-            xs = [xs]
-        if not isinstance(ys, list):
-            ys = [ys]
+        xs = ensure_is_list(xs)
+        ys = ensure_is_list(ys)
 
         if self.grid is not None:
             if self.sdim_name not in self.dimensions:
@@ -1260,10 +1266,8 @@ class EODataCube:
                 for i, entry in enumerate(data):
                     x = xs[i]
                     y = ys[i]
-                    if not isinstance(x, list):
-                        x = [x]
-                    if not isinstance(y, list):
-                        y = [y]
+                    x = ensure_is_list(x)
+                    y = ensure_is_list(y)
                     xr_ar = xr.DataArray(entry, coords={self.tdim_name: timestamps, 'y': y, 'x': x},
                                          dims=[self.tdim_name, 'y', 'x'])
                     ds.append(xr.Dataset(data_vars={str(band): xr_ar}))
@@ -1463,6 +1467,7 @@ class EODataCube:
 
         self.inventory = GeoDataFrame(inventory)
 
+
     @_check_inventory
     def __filter_by_dimension(self, values, expressions=None, name="time", split=False, inplace=False):
         """
@@ -1497,25 +1502,18 @@ class EODataCube:
             If not, the inventory of the data cube is filtered.
         """
 
-        if not isinstance(values, list):
-            values = [values]
+        values = ensure_is_list(values)
         n_filters = len(values)
         if expressions is None:  # equal operator is the default comparison operator
             expressions = ["=="] * n_filters
         else:
-            if not isinstance(expressions, list):
-                values = [expressions]
+            expressions = ensure_is_list(expressions)
 
         inventory = copy.deepcopy(self.inventory)
         filtered_inventories = []
         for i in range(n_filters):
-            value = values[i]
-            expression = expressions[i]
-            if not isinstance(value, (tuple, list)):
-                value = [value]
-
-            if not isinstance(expression, (tuple, list)):
-                expression = [expression]
+            value = ensure_is_list(values[i], allow_tuples=True)
+            expression = ensure_is_list(expressions[i], allow_tuples=True)
 
             if (len(value) == 2) and (len(expression) == 2):
                 filter_cmd = "inventory[(inventory[name] {} value[0]) & " \

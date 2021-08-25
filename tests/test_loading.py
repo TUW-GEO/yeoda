@@ -50,8 +50,8 @@ from tests.setup_test_data import dirpath_test
 from geopathfinder.naming_conventions.sgrt_naming import SgrtFilename
 
 # import yeoda data cube
-from yeoda.datacube import EODataCube
-from yeoda.products.preprocessed import SIG0DataCube
+from src.yeoda.datacube import EODataCube
+from src.yeoda.products.preprocessed import SIG0DataCube
 
 
 class LoadingTester(unittest.TestCase):
@@ -475,6 +475,14 @@ class LoadingGeomTester(LoadingTester):
             assert False
         except:
             assert True
+
+    def test_when_load_geom_and_inventory_empty_then_return_none(self):
+        """ Tests loading data when the data cube is empty. """
+
+        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_class=SgrtFilename, dimensions=['time'])
+        dc = dc.filter_by_dimension(123, name="time")
+        assert dc.inventory.empty
+        assert dc.load_by_geom(self.outside_bbox, dtype="numpy") is None
 
 
 if __name__ == '__main__':

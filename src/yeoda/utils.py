@@ -39,6 +39,7 @@ from osgeo import ogr
 from osgeo import osr
 import pytileproj.geometry as geometry
 import shapely.geometry
+from PIL import ImageDraw
 
 # load classes from yeoda's error module
 from yeoda.errors import GeometryUnkown
@@ -226,6 +227,63 @@ def boundary(gt, sref, shape):
     boundary_geom = geometry.bbox2polygon(bbox, boundary_spref)
 
     return boundary_geom
+
+
+def ensure_is_list(value, allow_tuples=False):
+    """
+    Takes a value and wraps it into a list if it is not already one. The result is returned.
+    If None is passed, None is returned.
+    Tuples are converted to lists by default.
+
+    Parameters
+    ----------
+    value: object
+        value to convert
+    allow_tuples: boolean
+        If True, tuples are returned as tuples.
+        If False, tuples will be converted to lists.
+
+    Returns
+    -------
+    list
+        a list that wraps the value, if allow_tuples=False
+    list or tuple
+        a list or a tuple that wraps the value, if allow_tuples=False
+    None
+        if the value is None
+    """
+    if value is None:
+        return None
+    whitelist = (list, tuple) if allow_tuples else list
+    return value if isinstance(value, whitelist) else list(value) if isinstance(value, tuple) else [value]
+
+def draw_proj_polygon_on_mask(mask_img, poly, min_col=0, min_row=0, transformation_fn=lambda x, y: (x, y)):
+    """
+    Draws a polygon on a given binary mask.
+    The polygon's coordinates will be reprojected using a given transformation_fn function.
+    By default, the transformation function is an identity function.
+
+    Parameters
+    ----------
+    mask_img: PIL.Image
+        canvas to draw polygon onto
+    poly: ogr.Geometry
+        polygon to draw, this must strictly be geometry with geom_type "Polygon"
+    min_col: int
+        horizontal offset of the polygon in the mask's grid system
+        0 by default
+    min_row: int
+        vertical offset of the polygon in the mask's grid system
+        0 by default
+    Returns
+    -------
+    Nothing, drawing is done in-place
+    """
+    coords_untransformed = list(zip(*poly.exterior.coords.xy))
+    coords_transformed = [(transformation_fn(x, y)) for (x, y) in coords_untransformed]
+    coords_transformed_offset = [(i - min_col, j - min_row) for i, j in coords_transformed]
+    ImageDraw.Draw(mask_img).polygon([tuple(point) for point in coords_transformed_offset], outline=1, fill=1)
+
 
 if __name__ == '__main__':
     pass

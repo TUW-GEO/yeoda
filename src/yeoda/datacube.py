@@ -54,6 +54,7 @@ from veranda.io.geotiff import GeoTiffFile
 from veranda.io.netcdf import NcFile
 from veranda.io.timestack import GeoTiffRasterTimeStack
 from veranda.io.timestack import NcRasterTimeStack
+from PIL import Image, ImageDraw
 
 # load yeoda's utils module
 from yeoda.utils import get_file_type
@@ -662,6 +663,45 @@ class EODataCube:
 
         return self.split_by_dimension(values, expressions, name=self.tdim_name)
 
+    def generate_mask(self, geom, sref=None):
+        if self.grid:
+            if self.sdim_name not in self.dimensions:
+                raise DimensionUnkown(self.sdim_name)
+            this_sref = self.grid.core.projection.osr_spref
+            tilenames = list(self.inventory[self.sdim_name])
+            if len(list(set(tilenames))) > 1:
+                raise Exception('Data can be loaded only from one tile. Please filter the data cube before.')
+            tilename = tilenames[0]
+            this_gt = self.grid.tilesys.create_tile(name=tilename).geotransform()
+        else:
+            this_sref, this_gt = self.__get_georef()
+
+        if sref is not None:
+            geom_roi = any_geom2ogr_geom(geom, osr_sref=sref)
+        else:
+            geom_roi = any_geom2ogr_geom(geom, osr_sref=this_sref)
+
+        extent = geometry.get_geometry_envelope(geom_roi)
+        traffo_fun = lambda x, y: xy2ij(x, y, this_gt)
+        min_col, min_row = xy2ij(extent[0], extent[3], this_gt)
+        max_col, max_row = xy2ij(extent[2], extent[1], this_gt)
+        col_size = max_col - min_col
+        row_size = max_row - min_row
+        geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
+        mask_img = Image.new('1', (col_size, row_size), 0)
+        if geom_roi.geom_type == "Polygon":
+            coords_untransformed = list(zip(*geom_roi.exterior.coords.xy))
+            coords_transformed = [(traffo_fun(x, y)) for (x, y) in coords_untransformed]
+            coords_transformed = [(i - min_col, j - min_row) for i, j in coords_transformed]
+            ImageDraw.Draw(mask_img).polygon([tuple(point) for point in coords_transformed], outline=1, fill=1)
+        elif geom_roi.geom_type == "MultiPolygon":
+            for poly in list(geom_roi):
+                coords_untransformed = list(zip(*poly.exterior.coords.xy))
+                coords_transformed = [(traffo_fun(x, y)) for (x, y) in coords_untransformed]
+                coords_transformed = [(i - min_col, j - min_row) for i, j in coords_transformed]
+                ImageDraw.Draw(mask_img).polygon([tuple(point) for point in coords_transformed], outline=1, fill=1)
+        return np.invert(np.array(mask_img))
+
     @_set_status('stable')
     def load_by_geom(self, geom, sref=None, band=1, apply_mask=False, dtype="xarray", origin='ul',
                      decode_kwargs=None):
@@ -741,15 +781,9 @@ class EODataCube:
         max_col, max_row = xy2ij(extent[2], extent[1], this_gt)
         col_size = max_col - min_col
         row_size = max_row - min_row
+
         if apply_mask:
-            geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
-            data_mask = np.ones((row_size, col_size))
-            for col in range(col_size):
-                for row in range(row_size):
-                    x, y = inv_traffo_fun(min_col + col, min_row + row)
-                    point = Point(x, y)
-                    if point.within(geom_roi) or point.touches(geom_roi):
-                        data_mask[row, col] = 0
+            data_mask = self.generate_mask(geom, sref=sref)
 
         file_type = get_file_type(self.filepaths[0])
         xs = None
@@ -763,7 +797,10 @@ class EODataCube:
                 raise LoadingDataError()
             data = self.decode(data, **decode_kwargs)
             if apply_mask:
-                data = np.ma.array(data, mask=np.stack([data_mask]*data.shape[0], axis=0))
+                if data.ndim > data_mask.ndim:
+                    data = np.ma.array(data, mask=np.stack([data_mask]*data.shape[0], axis=0))
+                else:
+                    data = np.ma.array(data, mask=data_mask)
 
             cols_traffo = np.concatenate(([min_col] * row_size, np.arange(min_col, max_col))).astype(float)
             rows_traffo = np.concatenate((np.arange(min_row, max_row), [min_row] * col_size)).astype(float)
@@ -784,7 +821,10 @@ class EODataCube:
 
             data_ar.data = self.decode(data_ar.data, **decode_kwargs)
             if apply_mask:
-                data_ar.data = np.ma.array(data_ar.data, mask=np.stack([data_mask] * data_ar.data.shape[0], axis=0))
+                if data_ar.ndim > data_mask.ndim:
+                    data_ar.data = np.ma.array(data_ar.data, mask=np.stack([data_mask] * data_ar.data.shape[0], axis=0))
+                else:
+                    data_ar.data = np.ma.array(data_ar.data, mask=data_mask)
             data = data_ar.to_dataset()
             data = self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band, time_units=time_units)
         else:

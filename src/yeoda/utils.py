@@ -40,6 +40,7 @@ from osgeo import osr
 import pytileproj.geometry as geometry
 import shapely.geometry
 from PIL import ImageDraw
+from geospade.tools import rasterise_polygon
 
 # load classes from yeoda's error module
 from yeoda.errors import GeometryUnkown

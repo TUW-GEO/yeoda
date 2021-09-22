@@ -53,7 +53,7 @@ from veranda.io.geotiff import GeoTiffFile
 from veranda.io.netcdf import NcFile
 from veranda.io.timestack import GeoTiffRasterTimeStack
 from veranda.io.timestack import NcRasterTimeStack
-from PIL import Image, ImageDraw
+from PIL import Image
 
 # load yeoda's utils module
 from yeoda.utils import get_file_type
@@ -709,7 +709,7 @@ class EODataCube:
         elif geom_roi.geom_type == "MultiPolygon":
             for poly in list(geom_roi):
                 draw_proj_polygon_on_mask(mask_img, poly, min_col=min_col, min_row=min_row,
-                                               transformation_fn=traffo_fun)
+                                            transformation_fn=traffo_fun)
         return np.array(mask_img)
 
     @_set_status('stable')
@@ -806,19 +806,16 @@ class EODataCube:
             if data is None:
                 raise LoadingDataError()
             data = self.decode(data, **decode_kwargs)
+            if len(data.shape) == 2:  # ensure that the data is always forwarded as a 3D array
+                data = data[None, :, :]
             if apply_mask:
-                if data.ndim > data_mask.ndim:
-                    data = np.ma.array(data, mask=np.stack([data_mask]*data.shape[0], axis=0))
-                else:
-                    data = np.ma.array(data, mask=data_mask)
+                data = np.ma.array(data, mask=np.stack([data_mask]*data.shape[0], axis=0))
 
             cols_traffo = np.concatenate(([min_col] * row_size, np.arange(min_col, max_col))).astype(float)
             rows_traffo = np.concatenate((np.arange(min_row, max_row), [min_row] * col_size)).astype(float)
             x_traffo, y_traffo = inv_traffo_fun(cols_traffo, rows_traffo)
             xs = x_traffo[row_size:]
             ys = y_traffo[:row_size]
-            if len(data.shape) == 2:  # ensure that the data is always forwarded as a 3D array
-                data = data[None, :, :]
             data = self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band)
         elif file_type == "NetCDF":
             if self._ds is None and self.status != "stable":
@@ -831,10 +828,7 @@ class EODataCube:
 
             data_ar.data = self.decode(data_ar.data, **decode_kwargs)
             if apply_mask:
-                if data_ar.ndim > data_mask.ndim:
-                    data_ar.data = np.ma.array(data_ar.data, mask=np.stack([data_mask] * data_ar.data.shape[0], axis=0))
-                else:
-                    data_ar.data = np.ma.array(data_ar.data, mask=data_mask)
+                data_ar.data = np.ma.array(data_ar.data, mask=np.stack([data_mask] * data_ar.data.shape[0], axis=0))
             data = data_ar.to_dataset()
             data = self.__convert_dtype(data, dtype=dtype, xs=xs, ys=ys, band=band, time_units=time_units)
         else:

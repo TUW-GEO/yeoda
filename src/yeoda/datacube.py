@@ -61,8 +61,7 @@ from yeoda.utils import any_geom2ogr_geom
 from yeoda.utils import xy2ij
 from yeoda.utils import ij2xy
 from yeoda.utils import boundary
-from utils import ensure_is_list, draw_proj_polygon_on_mask
-#from src.yeoda.utils import ensure_is_list
+from yeoda.utils import ensure_is_list, draw_proj_polygon_on_mask
 
 # load classes from yeoda's error module
 from yeoda.errors import IOClassNotFound

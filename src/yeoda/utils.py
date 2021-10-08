@@ -258,6 +258,7 @@ def ensure_is_list(value, allow_tuples=False):
     whitelist = (list, tuple) if allow_tuples else list
     return value if isinstance(value, whitelist) else list(value) if isinstance(value, tuple) else [value]
 
+
 def draw_proj_polygon_on_mask(mask_img, poly, min_col=0, min_row=0, transformation_fn=lambda x, y: (x, y)):
     """
     Draws a polygon on a given binary mask.

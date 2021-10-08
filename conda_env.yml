@@ -5,10 +5,11 @@ dependencies:
   - python=3.6
   - gdal=2.4
   - geopandas
+  - cartopy
   - pip
   - pip:
-    - regex
     - pytileproj==0.0.12
     - Equi7Grid==0.0.10
     - veranda==0.1.0
-    - geopathfinder==0.0.7
+    - geospade=0.1.1
+    - geopathfinder==0.1.1

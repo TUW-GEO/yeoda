@@ -1345,8 +1345,8 @@ class EODataCube:
 
         Returns
         -------
-        ogr.geometry
-            OGR polygon representing the boundary of the file or `None` if the file can not be identified.
+        geospade.raster.RasterGeometry
+            Raster geometry representing the geometric properties of the given file.
 
         """
 

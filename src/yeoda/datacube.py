@@ -64,6 +64,7 @@ from yeoda.utils import any_geom2ogr_geom
 from yeoda.utils import xy2ij
 from yeoda.utils import ij2xy
 from yeoda.utils import to_list
+from yeoda.utils import swap_axis
 
 # load classes from yeoda's error module
 from yeoda.errors import IOClassNotFound
@@ -235,6 +236,7 @@ class EODataCube:
             filepath = self.filepaths[0]
             raster_geom = self.__raster_geom_from_file(filepath)
             boundary = raster_geom.boundary_ogr
+            boundary = swap_axis(boundary)  # ensure lon-lat order
 
         return boundary
 
@@ -253,6 +255,7 @@ class EODataCube:
             raster_geom = self.__raster_geom_from_file(filepath)
             coord_boundary = ogr.CreateGeometryFromWkt(Polygon(raster_geom.coord_corners).wkt)
             coord_boundary.AssignSpatialReference(raster_geom.sref.osr_sref)
+            coord_boundary = swap_axis(coord_boundary)  # ensure lon-lat order
 
         return coord_boundary
 
@@ -538,6 +541,7 @@ class EODataCube:
             sref_lonlat = osr.SpatialReference()
             sref_lonlat.ImportFromEPSG(4326)
             geom_roi.TransformTo(sref_lonlat)
+            geom_roi = swap_axis(geom_roi)
             ftilenames = self.grid.search_tiles_over_geometry(geom_roi)
             tilenames = [ftilename.split('_')[1] for ftilename in ftilenames]
             return self.filter_spatially_by_tilename(tilenames, inplace=inplace, use_grid=False)
@@ -745,6 +749,7 @@ class EODataCube:
         roi_sref = geom_roi.GetSpatialReference()
         if not this_sref.IsSame(roi_sref):
             geom_roi = geometry.transform_geometry(geom_roi, this_sref)
+            geom_roi = swap_axis(geom_roi)
 
         # clip region of interest to tile boundary
         geom_roi = geom_roi.Intersection(self.coordinate_boundary)
@@ -992,6 +997,10 @@ class EODataCube:
             if sref is not None:
                 x, y = geometry.uv2xy(x, y, sref, this_sref)
             col, row = xy2ij(x, y, this_gt)
+            # check if coordinate is within datacube
+            raster_geom = self.__raster_geom_from_file(self.filepaths[0])
+            if (col < 0) or (row < 0)  or (col >= raster_geom.n_cols) or (row >= raster_geom.n_rows):
+                raise Exception('The given coordinate does not intersect with the tile boundaries.')
             # replace old coordinates with transformed coordinates related to the users definition
             x_t, y_t = ij2xy(col, row, this_gt, origin=origin)
             xs[i] = x_t
@@ -1192,6 +1201,7 @@ class EODataCube:
         geom = any_geom2ogr_geom(geom, osr_sref=sref)
         this_sref, _ = self.__get_georef()
         geom = geometry.transform_geometry(geom, this_sref)
+        geom = swap_axis(geom)
 
         return geom
 
@@ -1276,8 +1286,9 @@ class EODataCube:
             else:
                 raise DataTypeUnknown(type(data), dtype)
         elif dtype == "dataframe":
+            dimensions = ["time", "y", "x"]
             xr_ds = self.__convert_dtype(data, 'xarray', xs=xs, ys=ys, band=band)
-            converted_data = xr_ds.to_dataframe()
+            converted_data = xr_ds.to_dataframe().reset_index().sort_values(dimensions).set_index(dimensions)
         else:
             raise DataTypeUnknown(type(data), dtype)
 
@@ -1438,7 +1449,6 @@ class EODataCube:
                     inventory[key].append(entry[i])
 
         self.inventory = GeoDataFrame(inventory)
-
 
     @_check_inventory
     def __filter_by_dimension(self, values, expressions=None, name="time", split=False, inplace=False):

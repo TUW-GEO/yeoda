@@ -36,7 +36,7 @@ pip install yeoda
 Thus, for a fresh setup, an existing environment with the conda dependencies listed in ``conda_env.yml`` is expected.
 To create such an environment, you can run:
 ```
-conda create -n "yeoda" -c conda-forge python=3.6 gdal=2.4 geopandas cartopy
+conda create -n "yeoda" -c conda-forge python=3.7 gdal=3.0.2 geopandas cartopy
 ```
 
 ### conda

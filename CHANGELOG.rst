@@ -7,6 +7,7 @@ Version 0.3.0
 
 - added more input argument checks to the data loading functions
 - added geospade as a new dependency to allow for a faster polygon masking
+- upgrade to GDAL 3 and Python 3.7
 
 Version 0.2.2
 =============

@@ -37,10 +37,10 @@ import copy
 
 # geo packages
 from osgeo import ogr
-from osgeo import osr
+from osgeo.gdal import __version__ as GDAL_VERSION
 import pytileproj.geometry as geometry
 import shapely.geometry
-from geospade.raster import RasterGeometry
+from geospade.crs import SpatialRef
 
 # load classes from yeoda's error module
 from yeoda.errors import GeometryUnkown
@@ -91,6 +91,7 @@ def any_geom2ogr_geom(geom, osr_sref):
     if isinstance(geom, (tuple, list)) and (not isinstance(geom[0], (tuple, list))) and \
             (len(geom) == 4) and osr_sref:
         geom_ogr = geometry.bbox2polygon(geom, osr_sref)
+        geom_ogr = swap_axis(geom_ogr)  # ensure lon lat order
     elif isinstance(geom, (tuple, list)) and (isinstance(geom[0], (tuple, list))) and \
             (len(geom) == 2) and osr_sref:
         edge = ogr.Geometry(ogr.wkbLinearRing)
@@ -102,6 +103,7 @@ def any_geom2ogr_geom(geom, osr_sref):
         geom_ogr = ogr.Geometry(ogr.wkbPolygon)
         geom_ogr.AddGeometry(edge)
         geom_ogr.AssignSpatialReference(osr_sref)
+        geom_ogr = force_axis_mapping(geom_ogr)
     elif isinstance(geom, (tuple, list)) and isinstance(geom[0], (tuple, list)) and osr_sref:
         edge = ogr.Geometry(ogr.wkbLinearRing)
         for point in geom:
@@ -111,14 +113,17 @@ def any_geom2ogr_geom(geom, osr_sref):
         geom_ogr = ogr.Geometry(ogr.wkbPolygon)
         geom_ogr.AddGeometry(edge)
         geom_ogr.AssignSpatialReference(osr_sref)
+        geom_ogr = force_axis_mapping(geom_ogr)
     elif isinstance(geom, shapely.geometry.Polygon):
         geom_ogr = ogr.CreateGeometryFromWkt(geom.wkt)
         geom_ogr.AssignSpatialReference(osr_sref)
+        geom_ogr = swap_axis(geom_ogr)  # ensure lon lat order
     elif isinstance(geom, ogr.Geometry):
         geom_sref = geom.GetSpatialReference()
         if geom_sref is None:
             geom.AssignSpatialReference(osr_sref)
         geom_ogr = geom
+        geom_ogr = swap_axis(geom_ogr)  # ensure lon lat order
     else:
         raise GeometryUnkown(geom)
 
@@ -223,6 +228,60 @@ def to_list(value):
     if ret_val is not None:
         ret_val = list(ret_val) if isinstance(ret_val, whitelist) else [value]
     return ret_val
+
+
+def force_axis_mapping(ogr_geom):
+    """
+    Forces the given geometry to follow lon-lat order ("AxisMappingStrategy" = 0), if its spatial reference system is
+    geographic. I.e. for GDAL 3, the axis order will be swapped.
+
+    Parameters
+    ----------
+    ogr_geom : ogr.geometry
+        OGR geometry.
+
+    Returns
+    -------
+    ogr.geometry :
+        OGR geometry with coordinates in lon-lat order (if applicable).
+
+    """
+
+    osr_sref = ogr_geom.GetSpatialReference()
+    sref = SpatialRef.from_osr(osr_sref)
+    if sref.epsg == 4326:
+        if GDAL_VERSION[0] == '3':
+            osr_sref.SetAxisMappingStrategy(0)
+            ogr_geom.AssignSpatialReference(osr_sref)
+
+    return ogr_geom
+
+
+def swap_axis(ogr_geom):
+    """
+    Swaps axis to lon-lat order ("AxisMappingStrategy" = 0), if its spatial reference system is
+    geographic. I.e. for GDAL 3, the axis order will be swapped.
+
+    Parameters
+    ----------
+    ogr_geom : ogr.geometry
+        OGR geometry.
+
+    Returns
+    -------
+    ogr.geometry :
+        OGR geometry with coordinates in lon-lat order (if applicable).
+
+    """
+
+    osr_sref = ogr_geom.GetSpatialReference()
+    sref = SpatialRef.from_osr(osr_sref)
+    if (sref.epsg == 4326) and (GDAL_VERSION[0] == '3') and (osr_sref.GetAxisMappingStrategy() == 1):
+        ogr_geom.SwapXY()
+        osr_sref.SetAxisMappingStrategy(0)
+        ogr_geom.AssignSpatialReference(osr_sref)
+
+    return ogr_geom
 
 
 if __name__ == '__main__':

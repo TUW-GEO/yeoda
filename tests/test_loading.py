@@ -108,18 +108,20 @@ class LoadingCoordsTester(LoadingTester):
         self.lat = 44.
         sref = osr.SpatialReference()
         sref.ImportFromEPSG(4326)
+        sref.SetAxisMappingStrategy(0)  # ensure order is lon-lat
         self.sref = sref
         row = 970
         col = 246
         self.x = 4323250.
         self.y = 1314750.
+        dimensions = ["time", "y", "x"]
 
         self.ref_np_ar = (np.array([[[row + col]*4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=da.array(self.ref_np_ar.astype(float)).rechunk((1, 1, 1)),
                              coords={'time': self.timestamps, 'y': [self.y], 'x': [self.x]},
                              dims=['time', 'y', 'x'])
         self.ref_xr_ds = xr.Dataset(data_vars={'1': xr_ar})
-        self.ref_pd_df = self.ref_xr_ds.to_dataframe()
+        self.ref_pd_df = self.ref_xr_ds.to_dataframe().reset_index().sort_values(dimensions).set_index(dimensions)
 
     def test_load_gt2numpy_by_coord(self):
         """ Tests loading of a Numpy array from GeoTIFF files by geographic coordinates. """
@@ -234,13 +236,14 @@ class LoadingPixelsTester(LoadingTester):
         x = 4323250.
         y = 1314750.
         sres = 500.
+        dimensions = ["time", "y", "x"]
 
         self.ref_np_ar = (np.array([[[self.row + self.col]*4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=self.ref_np_ar.astype(float),
                              coords={'time': self.timestamps, 'y': [y], 'x': [x]},
                              dims=['time', 'y', 'x'])
         self.ref_xr_ds = xr.Dataset(data_vars={'1': xr_ar})
-        self.ref_pd_df = self.ref_xr_ds.to_dataframe()
+        self.ref_pd_df = self.ref_xr_ds.to_dataframe().reset_index().sort_values(dimensions).set_index(dimensions)
         rows, cols = np.meshgrid(np.arange(self.row, self.row+self.row_size),
                                  np.arange(self.col, self.col+self.col_size), indexing='ij')
         xs = np.arange(x, x + self.col_size * sres, sres)
@@ -252,7 +255,7 @@ class LoadingPixelsTester(LoadingTester):
                              coords={'time': self.timestamps, 'y': ys, 'x': xs},
                              dims=['time', 'y', 'x'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
-        self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe()
+        self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe().reset_index().sort_values(dimensions).set_index(dimensions)
 
     def test_load_gt2numpy_by_pixels(self):
         """ Tests loading of a Numpy array from GeoTIFF files by pixel coordinates. """
@@ -370,6 +373,7 @@ class LoadingGeomTester(LoadingTester):
         row_size = 10
         col_size = 16
         sres = 500.
+        dimensions = ["time", "y", "x"]
 
         # define bounding boxes
         # general bounding box for reading data
@@ -399,7 +403,7 @@ class LoadingGeomTester(LoadingTester):
                              coords={'time': self.timestamps, 'y': ys, 'x': xs},
                              dims=['time', 'y', 'x'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
-        self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe()
+        self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe().reset_index().sort_values(dimensions).set_index(dimensions)
 
     def test_load_gt2numpy_by_geom(self):
         """ Tests loading of a Numpy array from GeoTIFF files by a bounding box. """

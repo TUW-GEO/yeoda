@@ -9,8 +9,8 @@ dependencies:
   - cartopy
   - pip
   - pip:
-    - pytileproj==0.0.12
-    - Equi7Grid==0.0.10
+    - pytileproj
+    - equi7grid
     - veranda==0.1.0
-    - geospade=0.1.1
-    - geopathfinder==0.1.1
+    - geospade
+    - geopathfinder

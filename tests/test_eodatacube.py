@@ -277,7 +277,9 @@ class EODataCubeTester(unittest.TestCase):
         boundary = dc.boundary
         equi7 = Equi7Grid(500)
         tile_oi = equi7.EU.tilesys.create_tile(name="E042N012T6")
-        assert ogr.CreateGeometryFromWkt(boundary.wkt).ExportToWkt() == tile_oi.get_extent_geometry_proj().ConvexHull().ExportToWkt()
+        tile_geom = tile_oi.get_extent_geometry_proj()
+        tile_geom.FlattenTo2D()
+        assert boundary.ExportToWkt() == tile_geom.ConvexHull().ExportToWkt()
 
 
 if __name__ == '__main__':

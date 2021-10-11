@@ -127,11 +127,11 @@ class LoadingCoordsTester(LoadingTester):
         dc = self._create_loadable_dc(self.gt_filepaths)
 
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dtype='numpy')
-        assert (self.ref_np_ar == data).all()
+        assert np.array_equal(self.ref_np_ar, data)
 
         ref_data_list = [self.ref_np_ar, self.ref_np_ar]
         data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref, dtype='numpy')
-        assert (ref_data_list[0] == data[0]).all() & (ref_data_list[1] == data[1]).all()
+        assert np.array_equal(ref_data_list[0], data[0]) & np.array_equal(ref_data_list[1], data[1])
 
     def test_load_gt2xarray_by_coord(self):
         """ Tests loading of an xarray array from GeoTIFF files by geographic coordinates. """
@@ -167,12 +167,12 @@ class LoadingCoordsTester(LoadingTester):
         dc = self._create_loadable_dc(self.nc_filepaths)
 
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, dtype='numpy')
-        assert (self.ref_np_ar == data).all()
+        assert np.array_equal(self.ref_np_ar, data)
         dc.close()
 
         ref_data_list = [self.ref_np_ar, self.ref_np_ar]
         data = dc.load_by_coords([self.lon, self.lon], [self.lat, self.lat], sref=self.sref, dtype='numpy')
-        assert (ref_data_list[0] == data[0]).all() & (ref_data_list[1] == data[1]).all()
+        assert np.array_equal(ref_data_list[0], data[0]) & np.array_equal(ref_data_list[1], data[1])
         dc.close()
 
     def test_load_nc2xarray_by_coord(self):
@@ -260,10 +260,10 @@ class LoadingPixelsTester(LoadingTester):
         dc = self._create_loadable_dc(self.gt_filepaths)
 
         data = dc.load_by_pixels(self.row, self.col, dtype='numpy')
-        assert (self.ref_np_ar == data).all()
+        assert np.array_equal(self.ref_np_ar, data)
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='numpy')
-        assert (self.ref_np_ar_area == data).all()
+        assert np.array_equal(self.ref_np_ar_area, data)
 
     def test_load_gt2xarray_by_pixels(self):
         """ Tests loading of an xarray array from GeoTIFF files by pixel coordinates. """
@@ -300,11 +300,11 @@ class LoadingPixelsTester(LoadingTester):
         dc = self._create_loadable_dc(self.nc_filepaths)
 
         data = dc.load_by_pixels(self.row, self.col, dtype='numpy')
-        assert (self.ref_np_ar == data).all()
+        assert np.array_equal(self.ref_np_ar, data)
         dc.close()
 
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='numpy')
-        assert (self.ref_np_ar_area == data).all()
+        assert np.array_equal(self.ref_np_ar_area, data)
         dc.close()
 
     def test_load_nc2xarray_by_pixels(self):
@@ -388,10 +388,10 @@ class LoadingGeomTester(LoadingTester):
         self.partial_outside_bbox = [(x_min, y_min), (x_max, y_max)]
         self.outside_bbox = [(0, 0), (1, 1)]
 
-        rows, cols = np.meshgrid(np.arange(row, row+row_size),
-                                 np.arange(col, col+col_size), indexing='ij')
-        xs = np.arange(x, x + col_size * sres, sres)
-        ys = np.arange(y, y - row_size * sres, -sres)
+        rows, cols = np.meshgrid(np.arange(row, row + row_size + 1),
+                                 np.arange(col, col + col_size + 1), indexing='ij')
+        xs = np.arange(x, x + (col_size + 1) * sres, sres)
+        ys = np.arange(y, y - (row_size + 1) * sres, -sres)
         base_np_ar_2D = rows + cols
         base_np_ar = np.stack([base_np_ar_2D]*4, axis=0)
         self.ref_np_ar_area = (base_np_ar + np.arange(0, 4)[:, None, None]).astype(float)
@@ -406,7 +406,7 @@ class LoadingGeomTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.gt_filepaths)
         data = dc.load_by_geom(self.bbox, dtype='numpy')
-        assert (self.ref_np_ar_area == data).all()
+        assert np.array_equal(self.ref_np_ar_area, data)
 
     def test_load_gt2xarray_by_geom(self):
         """ Tests loading of an xarray array from GeoTIFF files by a bounding box. """
@@ -429,7 +429,7 @@ class LoadingGeomTester(LoadingTester):
 
         dc = self._create_loadable_dc(self.nc_filepaths)
         data = dc.load_by_geom(self.bbox, dtype='numpy')
-        assert (self.ref_np_ar_area == data).all()
+        assert np.array_equal(self.ref_np_ar_area, data)
         dc.close()
 
     def test_load_nc2xarray_by_geom(self):

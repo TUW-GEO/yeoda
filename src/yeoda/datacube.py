@@ -55,15 +55,15 @@ from veranda.io.netcdf import NcFile
 from veranda.io.timestack import GeoTiffRasterTimeStack
 from veranda.io.timestack import NcRasterTimeStack
 from geospade.tools import rasterise_polygon
-from PIL import Image
+from geospade.raster import RasterGeometry
+from geospade.raster import SpatialRef
 
 # load yeoda's utils module
 from yeoda.utils import get_file_type
 from yeoda.utils import any_geom2ogr_geom
 from yeoda.utils import xy2ij
 from yeoda.utils import ij2xy
-from yeoda.utils import boundary
-from yeoda.utils import to_list#, draw_proj_polygon_on_mask
+from yeoda.utils import to_list
 
 # load classes from yeoda's error module
 from yeoda.errors import IOClassNotFound
@@ -189,7 +189,7 @@ class EODataCube:
             self.grid = grid
             self.sdim_name = sdim_name
         elif (self.inventory is not None) and ('geometry' not in self.inventory.keys()):
-            geometries = [shapely.wkt.loads(self.__boundary_from_file(filepath).ExportAsWkt())
+            geometries = [self.__raster_geom_from_file(filepath).boundary_shapely
                           for filepath in self.filepaths]
             self.sdim_name = sdim_name if sdim_name in self.dimensions else "geometry"
             self.add_dimension('geometry', geometries, inplace=True)
@@ -224,16 +224,37 @@ class EODataCube:
     @property
     def boundary(self):
         """
-        shapely.geometry : Shapely polygon representing the boundary of the data cube or `None` if no files are
+        ogr.geometry : OGR polygon representing the boundary/envelope of the data cube or `None` if no files are
         contained in the data cube.
+
         """
 
         self.__check_spatial_consistency()
+        boundary = None
         if self.filepaths is not None:
             filepath = self.filepaths[0]
-            return self.__boundary_from_file(filepath)
-        else:
-            return None
+            raster_geom = self.__raster_geom_from_file(filepath)
+            boundary = raster_geom.boundary_ogr
+
+        return boundary
+
+    @property
+    def coordinate_boundary(self):
+        """
+        ogr.geometry : OGR polygon representing the coordinate boundary of the data cube or `None` if no files are
+        contained in the data cube.
+
+        """
+
+        self.__check_spatial_consistency()
+        coord_boundary = None
+        if self.filepaths is not None:
+            filepath = self.filepaths[0]
+            raster_geom = self.__raster_geom_from_file(filepath)
+            coord_boundary = ogr.CreateGeometryFromWkt(Polygon(raster_geom.coord_corners).wkt)
+            coord_boundary.AssignSpatialReference(raster_geom.sref.osr_sref)
+
+        return coord_boundary
 
     @classmethod
     def from_inventory(cls, inventory, grid=None, **kwargs):
@@ -659,7 +680,6 @@ class EODataCube:
 
         return self.split_by_dimension(values, expressions, name=self.tdim_name)
 
-
     @_set_status('stable')
     def load_by_geom(self, geom, sref=None, band=1, apply_mask=True, dtype="xarray", origin='ul',
                      decode_kwargs=None):
@@ -727,7 +747,7 @@ class EODataCube:
             geom_roi = geometry.transform_geometry(geom_roi, this_sref)
 
         # clip region of interest to tile boundary
-        geom_roi = geom_roi.Intersection(self.boundary)
+        geom_roi = geom_roi.Intersection(self.coordinate_boundary)
         if geom_roi.IsEmpty():
             raise Exception('The given geometry does not intersect with the tile boundaries.')
         geom_roi.AssignSpatialReference(this_sref)
@@ -739,8 +759,7 @@ class EODataCube:
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
         min_col, min_row = xy2ij(extent[0], extent[3], this_gt)
         max_col, max_row = xy2ij(extent[2], extent[1], this_gt)
-        col_size = max_col - min_col + 1  # plus one to still include the maximum column
-        row_size = max_row - min_row + 1  # plus one to still include the maximum row
+        max_col, max_row = max_col + 1, max_row + 1 # plus one to still include the maximum indexes
 
         if apply_mask:
             # pixel size extraction assumes non-rotated data
@@ -757,6 +776,8 @@ class EODataCube:
             if self._ds is None and self.status != "stable":
                 file_ts = {'filenames': list(self.filepaths)}
                 self._ds = GeoTiffRasterTimeStack(file_ts=file_ts, file_band=band)
+            col_size = max_col - min_col
+            row_size = max_row - min_row
             data = self._ds.read_ts(min_col, min_row, col_size=col_size, row_size=row_size)
             if data is None:
                 raise LoadingDataError()
@@ -1313,9 +1334,9 @@ class EODataCube:
         else:
             return self.io_map[file_type]
 
-    def __boundary_from_file(self, filepath):
+    def __raster_geom_from_file(self, filepath):
         """
-        Retrieves boundary geometry from an EO file.
+        Retrieves a raster geometry from an EO file.
 
         Parameters
         ----------
@@ -1332,11 +1353,12 @@ class EODataCube:
         file_type = get_file_type(filepath)
         io_class = self.__io_class(file_type)
         io_instance = io_class(filepath, mode='r')
-        boundary_geom = boundary(io_instance.geotransform, io_instance.spatialref, io_instance.shape)
+        sref = SpatialRef(io_instance.spatialref)
+        raster_geom = RasterGeometry(io_instance.shape[0], io_instance.shape[1], sref, io_instance.geotransform)
         # close data set
         io_instance.close()
 
-        return boundary_geom
+        return raster_geom
 
     def __check_spatial_consistency(self):
         """

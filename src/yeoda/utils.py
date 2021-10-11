@@ -33,12 +33,14 @@ Utilities and helping functions for the other modules of yeoda.
 
 # general packages
 import os
+import copy
 
 # geo packages
 from osgeo import ogr
 from osgeo import osr
 import pytileproj.geometry as geometry
 import shapely.geometry
+from geospade.raster import RasterGeometry
 
 # load classes from yeoda's error module
 from yeoda.errors import GeometryUnkown
@@ -200,32 +202,28 @@ def ij2xy(i, j, gt, origin="ul"):
     return x, y
 
 
-def boundary(gt, sref, shape):
+def to_list(value):
     """
-    Creates raster boundary polygon from geotransformation and shape parameters.
+    Takes a value and wraps it into a list if it is not already one. The result is returned.
+    If None is passed, None is returned.
 
     Parameters
     ----------
-    gt: tuple
-        Geotransformation parameters.
-    sref: osr.SpatialReference
-        Spatial reference of the boundary polygon.
-    shape: tuple
-        Defines the size of the boundary polygon/raster (rows, columns).
+    value : object
+        value to convert
 
     Returns
     -------
-    ogr.Geometry
-        Boundary polygon with the given spatial reference system assigned.
+    list or None
+        A list that wraps the value.
+
     """
+    ret_val = copy.deepcopy(value)
+    whitelist = (list, tuple)
+    if ret_val is not None:
+        ret_val = list(ret_val) if isinstance(ret_val, whitelist) else [value]
+    return ret_val
 
-    boundary_extent = (gt[0], gt[3] + shape[0] * gt[5], gt[0] + shape[1] * gt[1], gt[3])
-    boundary_spref = osr.SpatialReference()
-    boundary_spref.ImportFromWkt(sref)
-    bbox = [(boundary_extent[0], boundary_extent[1]), (boundary_extent[2], boundary_extent[3])]
-    boundary_geom = geometry.bbox2polygon(bbox, boundary_spref)
-
-    return boundary_geom
 
 if __name__ == '__main__':
     pass

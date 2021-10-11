@@ -15,7 +15,7 @@ classes to work with well-defined and structured earth observation data. These d
 Internally, the package relies on functionalities provided by [*geopathfinder*](https://github.com/TUW-GEO/geopathfinder) 
 (filepath/filename and folder structure handling library), [*veranda*](https://github.com/TUW-GEO/veranda) (IO classes and higher-level data structure classes for vector and raster data)
 and [*geospade*](https://github.com/TUW-GEO/geospade) (raster and vector geometry definitions and operations).
-Moreover, another very important part of *yeoda* is work with pre-defined grids like the [*Equi7Grid*](https://github.com/TUW-GEO/Equi7Grid) or the [*LatLonGrid*](https://github.com/TUW-GEO/latlongrid).
+Moreover, another very important part of *yeoda* is that it deals with pre-defined grids like the [*Equi7Grid*](https://github.com/TUW-GEO/Equi7Grid) or the [*LatLonGrid*](https://github.com/TUW-GEO/latlongrid).
 These grid packages can simplify and speed up spatial operations to identify tiles/files of interest (e.g, bounding box request by a user).
 
 ## Limitations and Outlook
@@ -25,22 +25,22 @@ Most changes will take place in *veranda* and *geospade*, so the actual interfac
 
 ## Installation
 The package can be either installed via pip or if you solely want to work with *yeoda* or contribute, we recommend to 
-install it as a conda environment. If you work already with your own environment, please have look at ``requirements.txt``.
+install it as a conda environment. If you work already with your own environment, please have look at ``conda_env.yml`` or ``setup.cfg`` for the required dependencies.
 
 ### pip
 To install *yeoda* via pip in your own environment, use:
 ```
 pip install yeoda
 ```
-**ATTENTION**: *GDAL* and *geopandas* need more OS support and have more dependencies then other packages and can therefore not be installed solely via pip.
-Thus, for a fresh setup, an existing environment with a *Python*, a *GDAL* and a *geopandas* installation are expected.
+**ATTENTION**: Packages like *gdal*, *cartopy*, or *geopandas* need more OS support and have more dependencies then other packages and can therefore not be installed solely via pip.
+Thus, for a fresh setup, an existing environment with the conda dependencies listed in ``conda_env.yml`` is expected.
 To create such an environment, you can run:
 ```
-conda create -n "yeoda" -c conda-forge python=3.6 gdal=2.4 geopandas
+conda create -n "yeoda" -c conda-forge python=3.6 gdal=2.4 geopandas cartopy
 ```
 
 ### conda
-The packages also comes along with two conda environments, one for Linux (``conda_env_linux.yml``) and one for Windows (``conda_env_windows.yml``). 
+The packages also comes along with a pre-defined conda environment (``conda_env.yml``). 
 This is especially recommended if you want to contribute to the project.
 The following script will install miniconda and setup the environment on a UNIX
 like system. Miniconda will be installed into ``$HOME/miniconda``.
@@ -48,7 +48,7 @@ like system. Miniconda will be installed into ``$HOME/miniconda``.
 wget http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
 bash miniconda.sh -b -p $HOME/miniconda
 export PATH="$HOME/miniconda/bin:$PATH"
-conda env create -f conda_env_linux.yml
+conda env create -f conda_env.yml
 source activate yeoda
 ```
 This script adds ``$HOME/miniconda/bin`` temporarily to the ``PATH`` to do this
@@ -62,7 +62,7 @@ For Windows, use the following setup:
     You can find the ``condabin`` folder usually under: ``C:\Users\username\AppData\Local\Continuum\miniconda3\condabin``
   * Finally, you can set up the conda environment via:
     ```
-    conda env create -f conda_env_windows.yml
+    conda env create -f conda_env.yml
     source activate yeoda
     ```
     

@@ -34,6 +34,8 @@ Main code for testing product data cubes.
 # general imports
 import unittest
 import numpy as np
+from geopathfinder.naming_conventions.sgrt_naming import SgrtFilename
+
 # yeoda imports
 from yeoda.products.preprocessed import SIG0DataCube
 from yeoda.products.preprocessed import GMRDataCube
@@ -58,7 +60,8 @@ class SIG0DataCubeTester(unittest.TestCase):
         self.filepaths, self.timestamps = setup_sig0_test_data()
 
         dimensions = ["pol", "time", "grid_name", "tile_name"]
-        self.dc = SIG0DataCube(filepaths=self.filepaths, sres=10, continent='EU', dimensions=dimensions)
+        self.dc = SIG0DataCube(filepaths=self.filepaths, sres=10, continent='EU', dimensions=dimensions,
+                               scale_factor=100, nodata=-9999, filename_class=SgrtFilename)
 
     def test_loading_data(self):
         """ Tests proper loading and decoding of data. """
@@ -69,13 +72,13 @@ class SIG0DataCubeTester(unittest.TestCase):
         dc_vh = self.dc.filter_by_dimension("VH", name="pol", inplace=False)
         # check VV data values
         result = dc_vv.load_by_coords(poi_x, poi_y, band=1, dtype="numpy")
-        assert np.array_equal(float(result), -8.74)
+        assert float(result) == -8.74
         # check VH data values
         result = dc_vh.load_by_coords(poi_x, poi_y, band=1, dtype="numpy")
-        assert np.array_equal(float(result), -14.15)
+        assert float(result) == -14.15
         # check no data values
         result = dc_vv.load_by_coords(poi_x, poi_y - 5., band=1, dtype="numpy")
-        assert np.all(np.isnan(result))
+        assert np.isnan(float(result))
 
     def test_check_timestamps(self):
         """ Tests if data and data cube time stamps match. """
@@ -91,7 +94,8 @@ class GMRDataCubeTester(unittest.TestCase):
         self.filepaths, self.timestamps = setup_gmr_test_data()
 
         dimensions = ["pol", "time", "grid_name", "tile_name"]
-        self.dc = GMRDataCube(filepaths=self.filepaths, sres=10, continent='EU', dimensions=dimensions)
+        self.dc = GMRDataCube(filepaths=self.filepaths, sres=10, continent='EU', dimensions=dimensions,
+                              scale_factor=100, nodata=-9999, filename_class=SgrtFilename)
 
     def test_loading_data(self):
         """ Tests proper loading and decoding of data. """
@@ -102,13 +106,13 @@ class GMRDataCubeTester(unittest.TestCase):
         dc_vh = self.dc.filter_by_dimension("VH", name="pol", inplace=False)
         # check VV data values
         result = dc_vv.load_by_coords(poi_x, poi_y, band=1, dtype="numpy")
-        assert np.array_equal(float(result), -7.93)
+        assert float(result) == -7.93
         # check VH data values
         result = dc_vh.load_by_coords(poi_x, poi_y, band=1, dtype="numpy")
-        assert np.array_equal(float(result), -13.39)
+        assert float(result) == -13.39
         # check no data values
         result = dc_vv.load_by_coords(poi_x, poi_y - 5., band=1, dtype="numpy")
-        assert np.all(np.isnan(result))
+        assert np.isnan(float(result))
 
     def test_check_timestamps(self):
         """ Tests if data and data cube time stamps match. """
@@ -123,7 +127,8 @@ class ParameterDataCubeTester(unittest.TestCase):
 
         self.filepaths, self.start_times, self.end_times = setup_parameter_test_data()
 
-        self.dc = ParameterDataCube(filepaths=self.filepaths, sres=10, continent='EU')
+        self.dc = ParameterDataCube(filepaths=self.filepaths, sres=10, continent='EU', scale_factor=10,
+                                    nodata=-9999, filename_class=SgrtFilename)
 
     def test_loading_data(self):
         """ Tests proper loading and decoding of data. """
@@ -151,7 +156,8 @@ class SCATSARSWIDataCubeTester(unittest.TestCase):
         self.filepaths, self.timestamps = setup_scatsarswi_test_data()
 
         dimensions = ["time", "grid_name", "tile_name", "band"]
-        self.dc = SCATSARSWIDataCube(filepaths=self.filepaths, sres=500, continent='EU', dimensions=dimensions)
+        self.dc = SCATSARSWIDataCube(filepaths=self.filepaths, sres=500, continent='EU', dimensions=dimensions,
+                                     filename_class=SgrtFilename)
 
     def test_loading_data(self):
         """ Tests proper loading and decoding of data. """
@@ -159,16 +165,16 @@ class SCATSARSWIDataCubeTester(unittest.TestCase):
 
         # check data values
         result = self.dc.load_by_coords(poi_x, poi_y, band='SWI_T002')
-        assert np.array_equal(np.float(result['SWI_T002'].data[:]), 30.)
+        assert np.array_equal(float(result['SWI_T002'].data[:]), 30.)
 
         result = self.dc.load_by_coords(poi_x, poi_y, band='QFLAG_T015')
-        assert np.array_equal(np.float(result['QFLAG_T015'].data[:]), 99.0)
+        assert np.array_equal(float(result['QFLAG_T015'].data[:]), 99.0)
 
         result = self.dc.load_by_coords(poi_x, poi_y, band='SSF')
-        assert np.array_equal(np.int(result['SSF'].data[:]), 1)
+        assert np.array_equal(int(result['SSF'].data[:]), 1)
 
         result = self.dc.load_by_coords(poi_x, poi_y, band='SAR_IC')
-        assert np.array_equal(np.int(result['SAR_IC'].data[:]), 0)
+        assert np.array_equal(int(result['SAR_IC'].data[:]), 0)
 
     def test_check_timestamps(self):
         """ Tests if data and data cube time stamps match. """
@@ -184,7 +190,8 @@ class SSMDataCubeTester(unittest.TestCase):
         self.filepaths, self.timestamps = setup_ssm_test_data()
 
         dimensions = ["time", "grid_name", "tile_name"]
-        self.dc = SSMDataCube(filepaths=self.filepaths, sres=500, continent='EU', dimensions=dimensions)
+        self.dc = SSMDataCube(filepaths=self.filepaths, sres=500, continent='EU', dimensions=dimensions,
+                              filename_class=SgrtFilename)
 
     def test_loading_data(self):
         """ Tests proper loading and decoding of data. """

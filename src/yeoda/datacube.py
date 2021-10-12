@@ -135,9 +135,10 @@ def _set_status(status):
 class EODataCube:
     """
     A file(name) based data cube for preferably gridded and well-structured EO data.
+
     """
 
-    def __init__(self, filepaths=None, grid=None, smart_filename_class=None, dimensions=None, inventory=None,
+    def __init__(self, filepaths=None, grid=None, filename_class=None, dimensions=None, inventory=None,
                  io_map=None, sdim_name="tile", tdim_name="time"):
         """
         Constructor of the `EODataCube` class.
@@ -148,8 +149,8 @@ class EODataCube:
             List of file paths.
         grid : pytileproj.base.TiledProjection, optional
             Tiled projection/grid object/class (e.g. `Equi7Grid`, `LatLonGrid`).
-        smart_filename_class : geopathfinder.file_naming.SmartFilename, optional
-            `SmartFilename` class to handle the interpretation of filenames.
+        filename_class : geopathfinder.file_naming.SmartFilename, optional
+            `SmartFilename` class to handle the interpretation of file names.
         dimensions : list of str, optional
             List of filename parts to use as dimensions. The strings have to match with the keys of the `SmartFilename`
             fields definition.
@@ -170,6 +171,7 @@ class EODataCube:
         self._ds = None  # data set pointer
         self.status = None
         self.tdim_name = tdim_name
+        self._filename_class = filename_class
 
         # initialise IO classes responsible for reading and writing
         if io_map is not None:
@@ -182,8 +184,7 @@ class EODataCube:
         if inventory is not None:
             self.inventory = inventory
         else:
-            self.__inventory_from_filepaths(filepaths, dimensions=dimensions,
-                                            smart_filename_class=smart_filename_class)
+            self.__inventory_from_filepaths(filepaths, dimensions=dimensions)
 
         self.grid = None
         if grid:
@@ -309,7 +310,7 @@ class EODataCube:
 
         inventory = copy.deepcopy(self.inventory)
         inventory = inventory.rename(columns=dimensions_map)
-        return self.__assign_inventory(inventory, inplace=inplace)
+        return self._assign_inventory(inventory, inplace=inplace)
 
     @_check_inventory
     def add_dimension(self, name, values, inplace=False):
@@ -338,7 +339,7 @@ class EODataCube:
         else:
             ds = pd.Series(values, index=self.inventory.index)
         inventory = self.inventory.assign(**{name: ds})
-        return self.__assign_inventory(inventory, inplace=inplace)
+        return self._assign_inventory(inventory, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
@@ -370,7 +371,7 @@ class EODataCube:
             file_filter = lambda x: re.search(pattern, x) is not None
         idx_filter = [file_filter(filepath) for filepath in self.filepaths]
         inventory = self.inventory[idx_filter]
-        return self.__assign_inventory(inventory, inplace=inplace)
+        return self._assign_inventory(inventory, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
@@ -412,7 +413,7 @@ class EODataCube:
             bool_filter.append(select)
 
         inventory = self.inventory[bool_filter]
-        return self.__assign_inventory(inventory, inplace=inplace)
+        return self._assign_inventory(inventory, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
@@ -439,7 +440,7 @@ class EODataCube:
         inventory = copy.deepcopy(self.inventory)
         inventory_sorted = inventory.sort_values(by=name, ascending=ascending)
 
-        return self.__assign_inventory(inventory=inventory_sorted)
+        return self._assign_inventory(inventory=inventory_sorted)
 
     @_set_status('changed')
     def filter_by_dimension(self, values, expressions=None, name="time", inplace=False):
@@ -550,7 +551,7 @@ class EODataCube:
             geom_roi = self.align_geom(geom_roi)
             geom_roi = shapely.wkt.loads(geom_roi.ExportToWkt())
             inventory = self.inventory[self.inventory.intersects(geom_roi)]
-            return self.__assign_inventory(inventory, inplace=inplace)
+            return self._assign_inventory(inventory, inplace=inplace)
         else:
             return self
 
@@ -1100,7 +1101,7 @@ class EODataCube:
         """
 
         dc_intersected = intersect_datacubes([self, dc_other], on_dimension=on_dimension)
-        return self.__assign_inventory(dc_intersected.inventory, inplace=inplace)
+        return self._assign_inventory(dc_intersected.inventory, inplace=inplace)
 
     @_set_status('changed')
     @_check_inventory
@@ -1127,7 +1128,7 @@ class EODataCube:
         """
 
         dc_united = unite_datacubes([self, dc_other])
-        return self.__assign_inventory(dc_united.inventory, inplace=inplace)
+        return self._assign_inventory(dc_united.inventory, inplace=inplace)
 
     @_set_status('changed')
     def align_dimension(self, dc_other, name, inplace=False):
@@ -1162,7 +1163,7 @@ class EODataCube:
         idxs = idxs[idxs != -1]
         if len(idxs) > 0:
             inventory = self.inventory.iloc[idxs].reset_index(drop=True)
-            return self.__assign_inventory(inventory, inplace=inplace)
+            return self._assign_inventory(inventory, inplace=inplace)
         else:
             print('No common dimension values found. Original data cube is returned.')
             return self
@@ -1389,7 +1390,7 @@ class EODataCube:
             if len(uni_vals) > 1:
                 raise SpatialInconsistencyError()
 
-    def __inventory_from_filepaths(self, filepaths, dimensions=None, smart_filename_class=None):
+    def __inventory_from_filepaths(self, filepaths, dimensions=None):
         """
         Creates GeoDataFrame (`inventory`) based on all filepaths.
         Each filepath/filename is translated to a SmartFilename object using a translation function
@@ -1402,8 +1403,7 @@ class EODataCube:
         dimensions : list of str, optional
             List of filename parts to use as dimensions. The strings have to match with the keys of the `SmartFilename`
             fields definition.
-        smart_filename_class : geopathfinder.file_naming.SmartFilename, optional
-            `SmartFilename` class to handle the interpretation of filenames.
+
         """
 
         inventory = OrderedDict()
@@ -1418,7 +1418,7 @@ class EODataCube:
             # get information from filename
             smart_filename = None
             try:
-                smart_filename = smart_filename_class.from_filename(os.path.basename(filepath), convert=True)
+                smart_filename = self._filename_class.from_filename(os.path.basename(filepath), convert=True)
             except:
                 pass
 
@@ -1508,14 +1508,14 @@ class EODataCube:
             filtered_inventories.append(eval(filter_cmd))
 
         if split:
-            eodcs = [self.__assign_inventory(filtered_inventory, inplace=False)
+            eodcs = [self._assign_inventory(filtered_inventory, inplace=False)
                      for filtered_inventory in filtered_inventories]
             return eodcs
         else:
             filtered_inventory = pd.concat(filtered_inventories, ignore_index=True)
-            return self.__assign_inventory(filtered_inventory, inplace=inplace)
+            return self._assign_inventory(filtered_inventory, inplace=inplace)
 
-    def __assign_inventory(self, inventory, inplace=True):
+    def _assign_inventory(self, inventory, inplace=True):
         """
         Helper method for either create a new data cube or overwrite the old data cube with the given inventory.
 
@@ -1549,7 +1549,8 @@ class EODataCube:
             return self
         else:
             return self.from_inventory(inventory=inventory, grid=self.grid,
-                                       tdim_name=tdim_name, sdim_name=sdim_name)
+                                       dimensions=self.dimensions, filename_class=self._filename_class,
+                                       io_map=self.io_map, tdim_name=tdim_name, sdim_name=sdim_name)
 
     def __deepcopy__(self, memodict={}):
         """

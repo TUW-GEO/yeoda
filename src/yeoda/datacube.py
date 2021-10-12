@@ -243,6 +243,22 @@ class EODataCube:
         return boundary
 
     @property
+    def raster_geometry(self):
+        """
+        geospade.raster.RasterGeometry :
+            Raster geometry representing the geometric properties of the given file. Note
+            that the raster geometry is extracted from the first file, so be sure that the
+            datacube only holds files from the same tile of the grid.
+
+        """
+        self.__check_spatial_consistency()
+        raster_geom = None
+        if not self.inventory.empty:
+            raster_geom = self.__raster_geom_from_file(self.filepaths[0])
+
+        return raster_geom
+
+    @property
     def coordinate_boundary(self):
         """
         ogr.geometry : OGR polygon representing the coordinate boundary of the data cube or `None` if no files are

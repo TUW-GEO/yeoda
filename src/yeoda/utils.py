@@ -34,12 +34,14 @@ Utilities and helping functions for the other modules of yeoda.
 # general packages
 import os
 import copy
+import numpy as np
 
 # geo packages
 from osgeo import ogr
 from osgeo.gdal import __version__ as GDAL_VERSION
 import pytileproj.geometry as geometry
 import shapely.geometry
+from geospade import DECIMALS
 from geospade.crs import SpatialRef
 
 # load classes from yeoda's error module
@@ -128,6 +130,41 @@ def any_geom2ogr_geom(geom, osr_sref):
         raise GeometryUnkown(geom)
 
     return geom_ogr
+
+
+def get_polygon_envelope(polygon, x_pixel_size, y_pixel_size):
+    """
+    Retrieves the envelope of the given polygon geometry in correspondence with the chosen pixel size,
+    i.e. the envelope coordinates are rounded to the upper-left corner.
+
+    Parameters
+    ----------
+    polygon : shapely.geometry.Polygon
+        Polygon.
+    x_pixel_size : number
+        Absolute pixel size in X direction.
+    y_pixel_size : number
+        Absolute pixel size in Y direction.
+
+    Returns
+    -------
+    min_x, min_y, max_x, max_y : number, number, number, number
+        Envelope of the given polygon geometry in correspondence with the chosen pixel size
+
+    """
+    # retrieve polygon points
+    poly_pts = list(polygon.exterior.coords)
+    # split tuple points into x and y coordinates and convert them to numpy arrays
+    xs, ys = [np.array(coords) for coords in zip(*poly_pts)]
+    # compute bounding box
+    min_x, min_y, max_x, max_y = min(xs), min(ys), max(xs), max(ys)
+    # round boundary coordinates to upper-left corner
+    min_x = int(round(min_x / x_pixel_size, DECIMALS)) * x_pixel_size
+    min_y = int(np.ceil(round(min_y / y_pixel_size, DECIMALS))) * y_pixel_size
+    max_x = int(round(max_x / x_pixel_size, DECIMALS)) * x_pixel_size
+    max_y = int(np.ceil(round(max_y / y_pixel_size, DECIMALS))) * y_pixel_size
+
+    return min_x, min_y, max_x, max_y
 
 
 def to_list(value):

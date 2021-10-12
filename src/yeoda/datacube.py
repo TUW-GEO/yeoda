@@ -65,6 +65,7 @@ from yeoda.utils import get_file_type
 from yeoda.utils import any_geom2ogr_geom
 from yeoda.utils import to_list
 from yeoda.utils import swap_axis
+from yeoda.utils import get_polygon_envelope
 
 # load classes from yeoda's error module
 from yeoda.errors import IOClassNotFound
@@ -761,7 +762,12 @@ class EODataCube:
         # remove third dimension from geometry
         geom_roi.FlattenTo2D()
 
-        extent = geometry.get_geometry_envelope(geom_roi)
+        # retrieve extent of polygon with respect to the pixel sampling of the grid
+        x_pixel_size = abs(this_gt[1])
+        y_pixel_size = abs(this_gt[5])
+        extent = get_polygon_envelope(shapely.wkt.loads(geom_roi.ExportToWkt()),
+                                      x_pixel_size,
+                                      y_pixel_size)
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
         min_col, min_row = [int(coord) for coord in xy2ij(extent[0], extent[3], this_gt)]
         max_col, max_row = [int(coord) for coord in xy2ij(extent[2], extent[1], this_gt)]
@@ -769,8 +775,6 @@ class EODataCube:
 
         if apply_mask:
             # pixel size extraction assumes non-rotated data
-            x_pixel_size = abs(this_gt[1])
-            y_pixel_size = abs(this_gt[5])
             data_mask = np.invert(rasterise_polygon(shapely.wkt.loads(geom_roi.ExportToWkt()),
                                                     x_pixel_size,
                                                     y_pixel_size).astype(bool))

@@ -31,92 +31,35 @@
 Main code for creating a TUWGEO parameter data cube.
 """
 
-# general packages
-import numpy as np
-
 # import TUWGEO product data cube
 from yeoda.products.base import ProductDataCube
 
 
 class ParameterDataCube(ProductDataCube):
     """
-    Data cube defining a TUWGEO parameter product.
-    A parameter data cube has a scaling factor of 10 and a no data value of -9999.
+    Data cube defining a TUWGEO parameter product, which has a pre-defined start and end date.
 
     """
 
-    def __init__(self, root_dirpath=None, var_names=None, sres=10, continent='EU', dimensions=None,
-                 file_pattern=".tif$", **kwargs):
+    def __init__(self, start_tdim_name='stime', end_tdim_name='etime', **kwargs):
         """
         Constructor of class `ParameterDataCube`.
 
         Parameters
         ----------
-        root_dirpath : str, optional
-            Root directory path to the SGRT directory tree.
-        var_names : list, optional
-            SGRT Variable names , e.g. ["TMENPLIA", "TMENSIG0"].
-        sres : int, optional
-            Spatial sampling in grid units, e.g. 10, 500 (default is 10).
-        continent : str, optional
-            Continent/Subgrid of the Equi7Grid system (default is 'EU').
-        dimensions : list, optional
-            List of filename parts to use as dimensions. The strings have to match with the keys of the `SgrtFilename`
-            fields definition.
-        inventory : GeoDataFrame, optional
-            Contains information about the dimensions (columns) and each filepath (rows).
-        file_pattern : str
-            Pattern to match/only select certain file names.
+        start_tdim_name : str, optional
+            Temporal dimension name of start time (defaults to 'stime').
+        end_tdim_name : str, optional
+            Temporal dimension name of end time (defaults to 'etime').
         **kwargs
-            Arbitrary keyword arguments (e.g. containing 'inventory' or 'grid').
+            Keyworded arguments for `ProductDataCube`.
 
         """
-        dimensions = [] if dimensions is None else dimensions
-        if "stime" not in dimensions:
-            dimensions.append("stime")
-        if "etime" not in dimensions:
-            dimensions.append("etime")
-        tdim_name = kwargs.pop('tdim_name', 'stime')
-        super().__init__(root_dirpath=root_dirpath, var_names=var_names, sres=sres, continent=continent,
-                         dimensions=dimensions, file_pattern=file_pattern, tdim_name=tdim_name, **kwargs)
+        dimensions = kwargs.pop('dimensions', [])
+        if start_tdim_name not in dimensions:
+            dimensions.append(start_tdim_name)
+        if end_tdim_name not in dimensions:
+            dimensions.append(end_tdim_name)
 
-    def encode(self, data, **kwargs):
-        """
-        Joint encoding function for TUWGEO parameter data.
+        super().__init__(dimensions=dimensions, **kwargs)
 
-        Parameters
-        ----------
-        data : np.ndarray
-            Input data.
-
-        Returns
-        -------
-        np.ndarray
-            Encoded data.
-
-        """
-
-        data *= 10
-        data[np.isnan(data)] = -9999
-        data.astype(np.int16)
-        return data
-
-    def decode(self, data, **kwargs):
-        """
-        Joint decoding function for TUWGEO parameter data.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            Encoded input data.
-
-        Returns
-        -------
-        np.ndarray
-            Decoded data based on native units.
-
-        """
-
-        data = data.astype(float)
-        data[data == -9999] = None
-        return data / 10.

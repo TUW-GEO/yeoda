@@ -44,51 +44,21 @@ class SSMDataCube(ProductDataCube):
 
     """
 
-    def __init__(self, root_dirpath=None, sres=500, continent='EU', dimensions=None, **kwargs):
+    def __init__(self, **kwargs):
         """
         Constructor of class `SSMDataCube`.
 
         Parameters
         ----------
-        root_dirpath : str, optional
-            Root directory path to the SGRT directory tree.
-        sres : int, optional
-            Spatial sampling in grid units, e.g. 10, 500 (default is 10).
-        continent : str, optional
-            Continent/Subgrid of the Equi7Grid system (default is 'EU').
-        dimensions : list, optional
-            List of filename parts to use as dimensions. The strings have to match with the keys of the `SgrtFilename`
-            fields definition.
-        inventory : GeoDataFrame, optional
-            Contains information about the dimensions (columns) and each filepath (rows).
-        file_pattern : str
-            Pattern to match/only select certain file names.
         **kwargs
-            Arbitrary keyword arguments (e.g. containing 'inventory' or 'grid').
+            Keyworded arguments for `ProductDataCube`.
+
         """
-
-        super().__init__(root_dirpath, ["SSM", "SSM-NOISE"], sres=sres, continent=continent, dimensions=dimensions,
-                         **kwargs)
-
-    def encode(self, data, **kwargs):
-        """
-        Encoding function for TUWGEO SSM/SSM-NOISE data.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            Input data.
-
-        Returns
-        -------
-        np.ndarray
-            Encoded data.
-        """
-
-        data *= 2
-        data[np.isnan(data)] = 255
-        data.astype(np.uint8)
-        return data
+        kwargs.update({'var_names': ["SSM", "SSM-NOISE"],
+                       'scale_factor': 2,
+                       'nodata': 255,
+                       'dtype': 'UInt8'})
+        super().__init__(**kwargs)
 
     def decode(self, data, **kwargs):
         """
@@ -107,4 +77,4 @@ class SSMDataCube(ProductDataCube):
 
         data = data.astype(float)
         data[data > 200] = np.nan
-        return data / 2.
+        return data / self._scale_factor

@@ -80,7 +80,7 @@ class LoadingTester(unittest.TestCase):
         appropriately.
         """
 
-        dc = EODataCube(filepaths=filepaths, smart_filename_class=SgrtFilename,
+        dc = EODataCube(filepaths=filepaths, filename_class=SgrtFilename,
                         dimensions=['time', 'var_name', 'pol', 'tile_name', 'orbit_direction'], sdim_name="tile_name")
 
         dc.filter_by_dimension('VV', name='pol', inplace=True)
@@ -209,7 +209,7 @@ class LoadingCoordsTester(LoadingTester):
     def test_load_singlenc2xarray_by_coord(self):
         """ Tests loading of an xarray array from a multidimensional NetCDF file by geographic coordinates. """
 
-        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_class=SgrtFilename,
+        dc = EODataCube(filepaths=[self.nc_filepath], filename_class=SgrtFilename,
                         dimensions=['time'])
         data = dc.load_by_coords(self.lon, self.lat, sref=self.sref, band='SIG0', dtype='xarray', origin='c')
         assert self.ref_xr_ds.equals(data.rename({'SIG0': '1'}))
@@ -345,7 +345,7 @@ class LoadingPixelsTester(LoadingTester):
     def test_load_singlenc2xarray_by_pixels(self):
         """ Tests loading of an xarray array from a multidimensional NetCDF file by pixel coordinates. """
 
-        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_class=SgrtFilename,
+        dc = EODataCube(filepaths=[self.nc_filepath], filename_class=SgrtFilename,
                         dimensions=['time'])
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, band='SIG0',
                                  dtype='xarray', origin='c')
@@ -455,7 +455,7 @@ class LoadingGeomTester(LoadingTester):
     def test_load_singlenc2xarray_by_pixels(self):
         """ Tests loading of an xarray array from a multidimensional NetCDF file by a bounding box. """
 
-        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_class=SgrtFilename,
+        dc = EODataCube(filepaths=[self.nc_filepath], filename_class=SgrtFilename,
                         dimensions=['time'])
         data = dc.load_by_geom(self.bbox, band='SIG0', dtype='xarray', origin='c')
         assert self.ref_xr_ds_area.equals(data.rename({'SIG0': '1'}))
@@ -464,7 +464,8 @@ class LoadingGeomTester(LoadingTester):
     def test_load_geom_larger_than_tile(self):
         """ Tests loading data when the region of interest is larger than the data cube extent. """
 
-        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500, sdim_name="tile_name")
+        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500, sdim_name="tile_name",
+                          filename_class=SgrtFilename)
         dc.filter_spatially_by_tilename("E042N012T6", inplace=True)
         data = dc.load_by_geom(self.partial_outside_bbox, dtype='numpy')
         assert data.shape == (16, 10, 16)
@@ -472,7 +473,8 @@ class LoadingGeomTester(LoadingTester):
     def test_load_geom_no_intersection(self):
         """ Tests loading data when the region of interest is outside the data cube extent. """
 
-        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500, sdim_name="tile_name")
+        dc = SIG0DataCube(filepaths=self.gt_filepaths, dimensions=['time'], sres=500, sdim_name="tile_name",
+                          filename_class=SgrtFilename)
         dc.filter_spatially_by_tilename("E042N012T6", inplace=True)
         try:
             _ = dc.load_by_geom(self.outside_bbox, dtype='numpy')
@@ -483,7 +485,7 @@ class LoadingGeomTester(LoadingTester):
     def test_when_load_geom_and_inventory_empty_then_return_none(self):
         """ Tests loading data when the data cube is empty. """
 
-        dc = EODataCube(filepaths=[self.nc_filepath], smart_filename_class=SgrtFilename, dimensions=['time'])
+        dc = EODataCube(filepaths=[self.nc_filepath], filename_class=SgrtFilename, dimensions=['time'])
         dc = dc.filter_by_dimension(123, name="time")
         assert dc.inventory.empty
         assert dc.load_by_geom(self.outside_bbox, dtype="numpy") is None

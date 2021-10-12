@@ -57,12 +57,12 @@ from veranda.io.timestack import NcRasterTimeStack
 from geospade.tools import rasterise_polygon
 from geospade.raster import RasterGeometry
 from geospade.raster import SpatialRef
+from geospade.transform import xy2ij
+from geospade.transform import ij2xy
 
 # load yeoda's utils module
 from yeoda.utils import get_file_type
 from yeoda.utils import any_geom2ogr_geom
-from yeoda.utils import xy2ij
-from yeoda.utils import ij2xy
 from yeoda.utils import to_list
 from yeoda.utils import swap_axis
 
@@ -763,8 +763,8 @@ class EODataCube:
 
         extent = geometry.get_geometry_envelope(geom_roi)
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
-        min_col, min_row = xy2ij(extent[0], extent[3], this_gt)
-        max_col, max_row = xy2ij(extent[2], extent[1], this_gt)
+        min_col, min_row = [int(coord) for coord in xy2ij(extent[0], extent[3], this_gt)]
+        max_col, max_row = [int(coord) for coord in xy2ij(extent[2], extent[1], this_gt)]
         max_col, max_row = max_col + 1, max_row + 1 # plus one to still include the maximum indexes
 
         if apply_mask:
@@ -997,7 +997,7 @@ class EODataCube:
 
             if sref is not None:
                 x, y = geometry.uv2xy(x, y, sref, this_sref)
-            col, row = xy2ij(x, y, this_gt)
+            col, row = [int(coord) for coord in xy2ij(x, y, this_gt)]
             # check if coordinate is within datacube
             raster_geom = self.__raster_geom_from_file(self.filepaths[0])
             if (col < 0) or (row < 0)  or (col >= raster_geom.n_cols) or (row >= raster_geom.n_rows):

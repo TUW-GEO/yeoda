@@ -39,6 +39,7 @@ import numpy as np
 # geo packages
 from osgeo import ogr
 from osgeo.gdal import __version__ as GDAL_VERSION
+GDAL_3_ENABLED = GDAL_VERSION[0] == '3'
 import pytileproj.geometry as geometry
 import shapely.geometry
 from geospade import DECIMALS
@@ -210,7 +211,7 @@ def force_axis_mapping(ogr_geom):
     osr_sref = ogr_geom.GetSpatialReference()
     sref = SpatialRef.from_osr(osr_sref)
     if sref.epsg == 4326:
-        if GDAL_VERSION[0] == '3':
+        if GDAL_3_ENABLED:
             osr_sref.SetAxisMappingStrategy(0)
             ogr_geom.AssignSpatialReference(osr_sref)
 
@@ -236,7 +237,7 @@ def swap_axis(ogr_geom):
 
     osr_sref = ogr_geom.GetSpatialReference()
     sref = SpatialRef.from_osr(osr_sref)
-    if (sref.epsg == 4326) and (GDAL_VERSION[0] == '3') and (osr_sref.GetAxisMappingStrategy() == 1):
+    if (sref.epsg == 4326) and GDAL_3_ENABLED and (osr_sref.GetAxisMappingStrategy() == 1):
         ogr_geom.SwapXY()
         osr_sref.SetAxisMappingStrategy(0)
         ogr_geom.AssignSpatialReference(osr_sref)

@@ -57,14 +57,15 @@ from veranda.io.timestack import NcRasterTimeStack
 from geospade.tools import rasterise_polygon
 from geospade.raster import RasterGeometry
 from geospade.raster import SpatialRef
+from geospade.transform import xy2ij
+from geospade.transform import ij2xy
 
 # load yeoda's utils module
 from yeoda.utils import get_file_type
 from yeoda.utils import any_geom2ogr_geom
-from yeoda.utils import xy2ij
-from yeoda.utils import ij2xy
 from yeoda.utils import to_list
 from yeoda.utils import swap_axis
+from yeoda.utils import get_polygon_envelope
 
 # load classes from yeoda's error module
 from yeoda.errors import IOClassNotFound
@@ -240,6 +241,22 @@ class EODataCube:
             boundary = swap_axis(boundary)  # ensure lon-lat order
 
         return boundary
+
+    @property
+    def raster_geometry(self):
+        """
+        geospade.raster.RasterGeometry :
+            Raster geometry representing the geometric properties of the given file. Note
+            that the raster geometry is extracted from the first file, so be sure that the
+            datacube only holds files from the same tile of the grid.
+
+        """
+        self.__check_spatial_consistency()
+        raster_geom = None
+        if not self.inventory.empty:
+            raster_geom = self.__raster_geom_from_file(self.filepaths[0])
+
+        return raster_geom
 
     @property
     def coordinate_boundary(self):
@@ -761,16 +778,19 @@ class EODataCube:
         # remove third dimension from geometry
         geom_roi.FlattenTo2D()
 
-        extent = geometry.get_geometry_envelope(geom_roi)
+        # retrieve extent of polygon with respect to the pixel sampling of the grid
+        x_pixel_size = abs(this_gt[1])
+        y_pixel_size = abs(this_gt[5])
+        extent = get_polygon_envelope(shapely.wkt.loads(geom_roi.ExportToWkt()),
+                                      x_pixel_size,
+                                      y_pixel_size)
         inv_traffo_fun = lambda i, j: ij2xy(i, j, this_gt, origin=origin)
-        min_col, min_row = xy2ij(extent[0], extent[3], this_gt)
-        max_col, max_row = xy2ij(extent[2], extent[1], this_gt)
+        min_col, min_row = [int(coord) for coord in xy2ij(extent[0], extent[3], this_gt)]
+        max_col, max_row = [int(coord) for coord in xy2ij(extent[2], extent[1], this_gt)]
         max_col, max_row = max_col + 1, max_row + 1 # plus one to still include the maximum indexes
 
         if apply_mask:
             # pixel size extraction assumes non-rotated data
-            x_pixel_size = abs(this_gt[1])
-            y_pixel_size = abs(this_gt[5])
             data_mask = np.invert(rasterise_polygon(shapely.wkt.loads(geom_roi.ExportToWkt()),
                                                     x_pixel_size,
                                                     y_pixel_size).astype(bool))
@@ -997,7 +1017,7 @@ class EODataCube:
 
             if sref is not None:
                 x, y = geometry.uv2xy(x, y, sref, this_sref)
-            col, row = xy2ij(x, y, this_gt)
+            col, row = [int(coord) for coord in xy2ij(x, y, this_gt)]
             # check if coordinate is within datacube
             raster_geom = self.__raster_geom_from_file(self.filepaths[0])
             if (col < 0) or (row < 0)  or (col >= raster_geom.n_cols) or (row >= raster_geom.n_rows):

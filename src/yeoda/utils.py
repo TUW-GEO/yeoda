@@ -34,12 +34,15 @@ Utilities and helping functions for the other modules of yeoda.
 # general packages
 import os
 import copy
+import numpy as np
 
 # geo packages
 from osgeo import ogr
 from osgeo.gdal import __version__ as GDAL_VERSION
+GDAL_3_ENABLED = GDAL_VERSION[0] == '3'
 import pytileproj.geometry as geometry
 import shapely.geometry
+from geospade import DECIMALS
 from geospade.crs import SpatialRef
 
 # load classes from yeoda's error module
@@ -130,81 +133,39 @@ def any_geom2ogr_geom(geom, osr_sref):
     return geom_ogr
 
 
-def xy2ij(x, y, gt):
+def get_polygon_envelope(polygon, x_pixel_size, y_pixel_size):
     """
-    Transforms global/world system coordinates to pixel coordinates/indexes.
+    Retrieves the envelope of the given polygon geometry in correspondence with the chosen pixel size,
+    i.e. the envelope coordinates are rounded to the upper-left corner.
 
     Parameters
     ----------
-    x : float
-        World system coordinate in X direction.
-    y : float
-        World system coordinate in Y direction.
-    gt : tuple
-        Geo-transformation parameters/dictionary.
+    polygon : shapely.geometry.Polygon
+        Polygon.
+    x_pixel_size : number
+        Absolute pixel size in X direction.
+    y_pixel_size : number
+        Absolute pixel size in Y direction.
 
     Returns
     -------
-    i : int
-        Column number in pixels.
-    j : int
-        Row number in pixels.
+    min_x, min_y, max_x, max_y : number, number, number, number
+        Envelope of the given polygon geometry in correspondence with the chosen pixel size
+
     """
+    # retrieve polygon points
+    poly_pts = list(polygon.exterior.coords)
+    # split tuple points into x and y coordinates and convert them to numpy arrays
+    xs, ys = [np.array(coords) for coords in zip(*poly_pts)]
+    # compute bounding box
+    min_x, min_y, max_x, max_y = min(xs), min(ys), max(xs), max(ys)
+    # round boundary coordinates to upper-left corner
+    min_x = int(round(min_x / x_pixel_size, DECIMALS)) * x_pixel_size
+    min_y = int(np.ceil(round(min_y / y_pixel_size, DECIMALS))) * y_pixel_size
+    max_x = int(round(max_x / x_pixel_size, DECIMALS)) * x_pixel_size
+    max_y = int(np.ceil(round(max_y / y_pixel_size, DECIMALS))) * y_pixel_size
 
-    i = int(-1.0 * (gt[2] * gt[3] - gt[0] * gt[5] + gt[5] * x - gt[2] * y) /
-            (gt[2] * gt[4] - gt[1] * gt[5]))
-    j = int(-1.0 * (-1 * gt[1] * gt[3] + gt[0] * gt[4] - gt[4] * x + gt[1] * y) /
-            (gt[2] * gt[4] - gt[1] * gt[5]))
-    return i, j
-
-
-def ij2xy(i, j, gt, origin="ul"):
-    """
-    Transforms global/world system coordinates to pixel coordinates/indexes.
-
-    Parameters
-    ----------
-    i : int
-        Column number in pixels.
-    j : int
-        Row number in pixels.
-    gt : dict
-        Geo-transformation parameters/dictionary.
-    origin: str, optional
-        Defines the world system origin of the pixel. It can be:
-            - upper left ("ul")
-            - upper right ("ur", default)
-            - lower right ("lr")
-            - lower left ("ll")
-            - center ("c")
-
-    Returns
-    -------
-    x : float
-        World system coordinate in X direction.
-    y : float
-        World system coordinate in Y direction.
-    """
-
-    px_shift_map = {"ul": (0, 0),
-                    "ur": (1, 0),
-                    "lr": (1, 1),
-                    "ll": (0, 1),
-                    "c": (.5, .5)}
-
-    if origin in px_shift_map.keys():
-        px_shift = px_shift_map[origin]
-    else:
-        user_wrng = "Pixel origin '{}' unknown. Upper left origin 'ul' will be taken instead".format(origin)
-        raise Warning(user_wrng)
-        px_shift = (0, 0)
-
-    i += px_shift[0]
-    j += px_shift[1]
-    x = gt[0] + i * gt[1] + j * gt[2]
-    y = gt[3] + i * gt[4] + j * gt[5]
-
-    return x, y
+    return min_x, min_y, max_x, max_y
 
 
 def to_list(value):
@@ -250,7 +211,7 @@ def force_axis_mapping(ogr_geom):
     osr_sref = ogr_geom.GetSpatialReference()
     sref = SpatialRef.from_osr(osr_sref)
     if sref.epsg == 4326:
-        if GDAL_VERSION[0] == '3':
+        if GDAL_3_ENABLED:
             osr_sref.SetAxisMappingStrategy(0)
             ogr_geom.AssignSpatialReference(osr_sref)
 
@@ -276,7 +237,7 @@ def swap_axis(ogr_geom):
 
     osr_sref = ogr_geom.GetSpatialReference()
     sref = SpatialRef.from_osr(osr_sref)
-    if (sref.epsg == 4326) and (GDAL_VERSION[0] == '3') and (osr_sref.GetAxisMappingStrategy() == 1):
+    if (sref.epsg == 4326) and GDAL_3_ENABLED and (osr_sref.GetAxisMappingStrategy() == 1):
         ogr_geom.SwapXY()
         osr_sref.SetAxisMappingStrategy(0)
         ogr_geom.AssignSpatialReference(osr_sref)

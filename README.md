@@ -96,9 +96,9 @@ how to pixel
 <!-- snippet: data_cube_load_numpy_by_pixels -->
 <a id='snippet-data_cube_load_numpy_by_pixels'></a>
 ```py
-data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='numpy')
+data = dc.load_by_pixels(970, 246, row_size=10, col_size=16, dtype='numpy')
 ```
-<sup><a href='/tests/test_loading.py#L268-L270' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_pixels' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/test_loading.py#L269-L271' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_pixels' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 how to bbox
@@ -106,9 +106,10 @@ how to bbox
 <!-- snippet: data_cube_load_numpy_by_bbox -->
 <a id='snippet-data_cube_load_numpy_by_bbox'></a>
 ```py
+bbox = [(4323250, 1309750), (4331250, 1314750)]
 data = dc.load_by_geom(self.bbox, dtype='numpy')
 ```
-<sup><a href='/tests/test_loading.py#L414-L416' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_bbox' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/test_loading.py#L416-L419' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_bbox' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 

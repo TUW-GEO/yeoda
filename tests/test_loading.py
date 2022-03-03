@@ -79,7 +79,7 @@ class LoadingTester(unittest.TestCase):
         Creates a data cube and filters it so that only the temporal dimension is left for loading data
         appropriately.
         """
-
+        # begin-snippet: create_and_filter_datacube
         dc = EODataCube(filepaths=filepaths, filename_class=SgrtFilename,
                         dimensions=['time', 'var_name', 'pol', 'tile_name', 'orbit_direction'], sdim_name="tile_name")
 
@@ -87,7 +87,7 @@ class LoadingTester(unittest.TestCase):
         dc.filter_by_dimension('SIG0', name='var_name', inplace=True)
         dc.filter_by_dimension('D', name='orbit_direction', inplace=True)
         dc.filter_spatially_by_tilename('E042N012T6', inplace=True, use_grid=False)
-
+        # end-snippet
         return dc
 
 
@@ -265,7 +265,9 @@ class LoadingPixelsTester(LoadingTester):
         data = dc.load_by_pixels(self.row, self.col, dtype='numpy')
         assert np.array_equal(self.ref_np_ar, data)
 
+        # begin-snippet: data_cube_load_numpy_by_pixels
         data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='numpy')
+        # end-snippet
         assert np.array_equal(self.ref_np_ar_area, data)
 
     def test_load_gt2xarray_by_pixels(self):
@@ -409,7 +411,9 @@ class LoadingGeomTester(LoadingTester):
         """ Tests loading of a Numpy array from GeoTIFF files by a bounding box. """
 
         dc = self._create_loadable_dc(self.gt_filepaths)
+        # begin-snippet: data_cube_load_numpy_by_bbox
         data = dc.load_by_geom(self.bbox, dtype='numpy')
+        # end-snippet
         assert np.array_equal(self.ref_np_ar_area, data)
 
     def test_load_gt2xarray_by_geom(self):

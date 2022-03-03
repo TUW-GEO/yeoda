@@ -72,6 +72,46 @@ python setup.py test
 ```
 to run the test suite.
 
+## Examples
+TODO [BR 03.03.2022]: Write proper example description - I'm testing snippets just now
+
+how to load
+
+<!-- snippet: create_and_filter_datacube -->
+<a id='snippet-create_and_filter_datacube'></a>
+```py
+dc = EODataCube(filepaths=filepaths, filename_class=SgrtFilename,
+                dimensions=['time', 'var_name', 'pol', 'tile_name', 'orbit_direction'], sdim_name="tile_name")
+
+dc.filter_by_dimension('VV', name='pol', inplace=True)
+dc.filter_by_dimension('SIG0', name='var_name', inplace=True)
+dc.filter_by_dimension('D', name='orbit_direction', inplace=True)
+dc.filter_spatially_by_tilename('E042N012T6', inplace=True, use_grid=False)
+```
+<sup><a href='/tests/test_loading.py#L82-L90' title='Snippet source file'>snippet source</a> | <a href='#snippet-create_and_filter_datacube' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+how to pixel
+
+<!-- snippet: data_cube_load_numpy_by_pixels -->
+<a id='snippet-data_cube_load_numpy_by_pixels'></a>
+```py
+data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='numpy')
+```
+<sup><a href='/tests/test_loading.py#L268-L270' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_pixels' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+how to bbox
+
+<!-- snippet: data_cube_load_numpy_by_bbox -->
+<a id='snippet-data_cube_load_numpy_by_bbox'></a>
+```py
+data = dc.load_by_geom(self.bbox, dtype='numpy')
+```
+<sup><a href='/tests/test_loading.py#L414-L416' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_bbox' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+
 ## Contribution
 We are happy if you want to contribute. Please raise an issue explaining what
 is missing or if you find a bug. We will also gladly accept pull requests

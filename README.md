@@ -9,7 +9,20 @@
 
 *Earth Observation (EO) data, I must read.*
 
-toc
+<!-- toc -->
+## Contents
+
+  * [Description](#description)
+  * [Limitations and Outlook](#limitations-and-outlook)
+  * [Installation](#installation)
+    * [pip](#pip)
+    * [conda](#conda)
+  * [Examples](#examples)
+    * [Loading data from TIFF Files](#loading-data-from-tiff-files)
+    * [Read raster data by pixel coordinates](#read-raster-data-by-pixel-coordinates)
+    * [Read rasta data by bounding box](#read-rasta-data-by-bounding-box)
+  * [Contribution](#contribution)
+  * [Citation](#citation)<!-- endToc -->
 
 ## Description
 *yeoda* stands for **y**our **e**arth **o**bservation **d**ata **a**ccess and provides lower and higher-level data cube 

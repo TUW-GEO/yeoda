@@ -107,7 +107,7 @@ how to bbox
 <a id='snippet-data_cube_load_numpy_by_bbox'></a>
 ```py
 bbox = [(4323250, 1309750), (4331250, 1314750)]
-data = dc.load_by_geom(self.bbox, dtype='numpy')
+data = dc.load_by_geom(bbox, dtype='numpy')
 ```
 <sup><a href='/tests/test_loading.py#L416-L419' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_bbox' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->

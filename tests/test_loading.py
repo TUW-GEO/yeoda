@@ -415,7 +415,7 @@ class LoadingGeomTester(LoadingTester):
         # inlining commong variables so the example code snippets can be copy pasted
         # begin-snippet: data_cube_load_numpy_by_bbox
         bbox = [(4323250, 1309750), (4331250, 1314750)]
-        data = dc.load_by_geom(self.bbox, dtype='numpy')
+        data = dc.load_by_geom(bbox, dtype='numpy')
         # end-snippet
         assert np.array_equal(self.ref_np_ar_area, data)
 

@@ -265,7 +265,7 @@ class LoadingPixelsTester(LoadingTester):
         data = dc.load_by_pixels(self.row, self.col, dtype='numpy')
         assert np.array_equal(self.ref_np_ar, data)
 
-        # inlining commong variables so the example code snippets can be copy pasted
+        # inlining common variables so the example code snippets can be copy pasted
         # begin-snippet: data_cube_load_numpy_by_pixels
         data = dc.load_by_pixels(970, 246, row_size=10, col_size=16, dtype='numpy')
         # end-snippet
@@ -412,7 +412,7 @@ class LoadingGeomTester(LoadingTester):
         """ Tests loading of a Numpy array from GeoTIFF files by a bounding box. """
 
         dc = self._create_loadable_dc(self.gt_filepaths)
-        # inlining commong variables so the example code snippets can be copy pasted
+        # inlining common variables so the example code snippets can be copy pasted
         # begin-snippet: data_cube_load_numpy_by_bbox
         bbox = [(4323250, 1309750), (4331250, 1314750)]
         data = dc.load_by_geom(bbox, dtype='numpy')

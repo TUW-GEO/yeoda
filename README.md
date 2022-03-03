@@ -24,15 +24,15 @@ tiles, e.g. you can only load data from one tile and one band. This will change 
 Most changes will take place in *veranda* and *geospade*, so the actual interface to the data given by *yeoda* should stay approximately the same.
 
 ## Installation
-The package can be either installed via pip or if you solely want to work with *yeoda* or contribute, we recommend to 
-install it as a conda environment. If you work already with your own environment, please have look at ``conda_env.yml`` or ``setup.cfg`` for the required dependencies.
+The package can be either installed via pip or if you solely want to work with *yeoda* or contribute, we recommend installing
+it as a conda environment. If you work already with your own environment, please have look at ``conda_env.yml`` or ``setup.cfg`` for the required dependencies.
 
 ### pip
 To install *yeoda* via pip in your own environment, use:
 ```
 pip install yeoda
 ```
-**ATTENTION**: Packages like *gdal*, *cartopy*, or *geopandas* need more OS support and have more dependencies then other packages and can therefore not be installed solely via pip.
+**ATTENTION**: Packages like *gdal*, *cartopy*, or *geopandas* need more OS support and have more dependencies than other packages and can therefore not be installed solely via pip.
 Thus, for a fresh setup, an existing environment with the conda dependencies listed in ``conda_env.yml`` is expected.
 To create such an environment, you can run:
 ```
@@ -73,9 +73,15 @@ python setup.py test
 to run the test suite.
 
 ## Examples
-TODO [BR 03.03.2022]: Write proper example description - I'm testing snippets just now
+This section demonstrates basic usage of a *yeoda* datacube, specifically how to load raster data and read it using pixel 
+coordinates or geometry definitions.
 
-how to load
+### Loading data from TIFF Files
+You can create a data cube from a collection of tiff files, by passing them into the constructor of the `EODataCube` and
+specifying the type of naming convention you want to use via the `filename_class` parameters. This can take any 
+`SmartFilename` class, see [geopathfinder] (https://github.com/TUW-GEO/geopathfinder) for details. The `dimensions` parameter
+defines the columns you want to read into the data cube's inventory and the values for these are usually parsed from the
+`SmartFilename`. The `sdim_name` defines the spatial dimension.
 
 <!-- snippet: create_and_filter_datacube -->
 <a id='snippet-create_and_filter_datacube'></a>
@@ -91,7 +97,10 @@ dc.filter_spatially_by_tilename('E042N012T6', inplace=True, use_grid=False)
 <sup><a href='/tests/test_loading.py#L82-L90' title='Snippet source file'>snippet source</a> | <a href='#snippet-create_and_filter_datacube' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
-how to pixel
+### Read raster data by pixel coordinates
+The data cube's `load_by_pixels` allows you to read rasta data from specifying a region of interest in pixels. It will
+automatically crop it the requested size and handle tile boundaries. The `dtype` parameter determines the data type the
+function will return, in this case a *numpy* array (see [numpy](https://numpy.org/) for details).
 
 <!-- snippet: data_cube_load_numpy_by_pixels -->
 <a id='snippet-data_cube_load_numpy_by_pixels'></a>
@@ -101,7 +110,10 @@ data = dc.load_by_pixels(970, 246, row_size=10, col_size=16, dtype='numpy')
 <sup><a href='/tests/test_loading.py#L269-L271' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_pixels' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
-how to bbox
+### Read rasta data by bounding box
+Using the data cube's `load_by_geom` you can specify for instance a bounding box geometry and *yeoda* will load and 
+return the raster data covered by it. The `dtype` parameters determines the data type that will be returned, in this
+example a *numpy* array (see [numpy](https://numpy.org/) for details.
 
 <!-- snippet: data_cube_load_numpy_by_bbox -->
 <a id='snippet-data_cube_load_numpy_by_bbox'></a>

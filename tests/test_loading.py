@@ -116,7 +116,7 @@ class LoadingCoordsTester(LoadingTester):
         self.y = 1314750.
         dimensions = ["time", "y", "x"]
 
-        self.ref_np_ar = (np.array([[[row + col]*4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
+        self.ref_np_ar = (np.array([[[row + col] * 4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=da.array(self.ref_np_ar.astype(float)).rechunk((1, 1, 1)),
                              coords={'time': self.timestamps, 'y': [self.y], 'x': [self.x]},
                              dims=['time', 'y', 'x'])
@@ -238,24 +238,26 @@ class LoadingPixelsTester(LoadingTester):
         sres = 500.
         dimensions = ["time", "y", "x"]
 
-        self.ref_np_ar = (np.array([[[self.row + self.col]*4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
+        self.ref_np_ar = (np.array([[[self.row + self.col] * 4]]).T + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=self.ref_np_ar.astype(float),
                              coords={'time': self.timestamps, 'y': [y], 'x': [x]},
                              dims=['time', 'y', 'x'])
         self.ref_xr_ds = xr.Dataset(data_vars={'1': xr_ar})
         self.ref_pd_df = self.ref_xr_ds.to_dataframe().reset_index().sort_values(dimensions).set_index(dimensions)
-        rows, cols = np.meshgrid(np.arange(self.row, self.row+self.row_size),
-                                 np.arange(self.col, self.col+self.col_size), indexing='ij')
+        rows, cols = np.meshgrid(np.arange(self.row, self.row + self.row_size),
+                                 np.arange(self.col, self.col + self.col_size), indexing='ij')
         xs = np.arange(x, x + self.col_size * sres, sres)
         ys = np.arange(y, y - self.row_size * sres, -sres)
         base_np_ar_2D = rows + cols
-        base_np_ar = np.stack([base_np_ar_2D]*4, axis=0)
+        base_np_ar = np.stack([base_np_ar_2D] * 4, axis=0)
         self.ref_np_ar_area = (base_np_ar + np.arange(0, 4)[:, None, None]).astype(float)
-        xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, self.row_size, self.col_size)),
-                             coords={'time': self.timestamps, 'y': ys, 'x': xs},
-                             dims=['time', 'y', 'x'])
+        xr_ar = xr.DataArray(
+            data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, self.row_size, self.col_size)),
+            coords={'time': self.timestamps, 'y': ys, 'x': xs},
+            dims=['time', 'y', 'x'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
-        self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe().reset_index().sort_values(dimensions).set_index(dimensions)
+        self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe().reset_index().sort_values(dimensions).set_index(
+            dimensions)
 
     def test_load_gt2numpy_by_pixels(self):
         """ Tests loading of a Numpy array from GeoTIFF files by pixel coordinates. """
@@ -265,7 +267,11 @@ class LoadingPixelsTester(LoadingTester):
         data = dc.load_by_pixels(self.row, self.col, dtype='numpy')
         assert np.array_equal(self.ref_np_ar, data)
 
-        # inlining common variables so the example code snippets can be copy pasted
+        data = dc.load_by_pixels(self.row, self.col, row_size=self.row_size, col_size=self.col_size, dtype='numpy')
+        assert np.array_equal(self.ref_np_ar_area, data)
+
+    def test_load_by_pixels_doc_example(self):
+        dc = self._create_loadable_dc(self.gt_filepaths)
         # begin-snippet: data_cube_load_numpy_by_pixels
         data = dc.load_by_pixels(970, 246, row_size=10, col_size=16, dtype='numpy')
         # end-snippet
@@ -388,10 +394,10 @@ class LoadingGeomTester(LoadingTester):
         # defines bounding box being partially outside the tile (lower right corner)
         x_lr = 4800000.0
         y_lr = 1200000.0
-        x_min = x_lr - col_size*sres
-        x_max = x_lr + 2*col_size*sres
-        y_min = y_lr - 2*row_size*sres
-        y_max = y_lr + row_size*sres
+        x_min = x_lr - col_size * sres
+        x_max = x_lr + 2 * col_size * sres
+        y_min = y_lr - 2 * row_size * sres
+        y_max = y_lr + row_size * sres
         self.partial_outside_bbox = [(x_min, y_min), (x_max, y_max)]
         self.outside_bbox = [(0, 0), (1, 1)]
 
@@ -400,19 +406,23 @@ class LoadingGeomTester(LoadingTester):
         xs = np.arange(x, x + (col_size + 1) * sres, sres)
         ys = np.arange(y, y - (row_size + 1) * sres, -sres)
         base_np_ar_2D = rows + cols
-        base_np_ar = np.stack([base_np_ar_2D]*4, axis=0)
+        base_np_ar = np.stack([base_np_ar_2D] * 4, axis=0)
         self.ref_np_ar_area = (base_np_ar + np.arange(0, 4)[:, None, None]).astype(float)
         xr_ar = xr.DataArray(data=da.array(self.ref_np_ar_area.astype(float)).rechunk((1, row_size, col_size)),
                              coords={'time': self.timestamps, 'y': ys, 'x': xs},
                              dims=['time', 'y', 'x'])
         self.ref_xr_ds_area = xr.Dataset(data_vars={'1': xr_ar})
-        self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe().reset_index().sort_values(dimensions).set_index(dimensions)
+        self.ref_pd_df_area = self.ref_xr_ds_area.to_dataframe().reset_index().sort_values(dimensions).set_index(
+            dimensions)
 
     def test_load_gt2numpy_by_geom(self):
         """ Tests loading of a Numpy array from GeoTIFF files by a bounding box. """
-
         dc = self._create_loadable_dc(self.gt_filepaths)
-        # inlining common variables so the example code snippets can be copy pasted
+        data = dc.load_by_geom(self.bbox, dtype='numpy')
+        assert np.array_equal(self.ref_np_ar_area, data)
+
+    def test_load_by_bbox_doc_example(self):
+        dc = self._create_loadable_dc(self.gt_filepaths)
         # begin-snippet: data_cube_load_numpy_by_bbox
         bbox = [(4323250, 1309750), (4331250, 1314750)]
         data = dc.load_by_geom(bbox, dtype='numpy')
@@ -500,4 +510,3 @@ class LoadingGeomTester(LoadingTester):
 
 if __name__ == '__main__':
     unittest.main()
-

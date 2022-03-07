@@ -13,14 +13,14 @@
 ## Contents
 
   * [Description](#description)
-  * [Limitations and Outlook](#limitations-and-outlook)
+  * [Limitations and outlook](#limitations-and-outlook)
   * [Installation](#installation)
-    * [pip](#pip)
-    * [conda](#conda)
+    * [Pip](#pip)
+    * [Conda](#conda)
   * [Examples](#examples)
-    * [Loading data from TIFF Files](#loading-data-from-tiff-files)
+    * [Loading data from GeoTIFF files](#loading-data-from-geotiff-files)
     * [Read raster data by pixel coordinates](#read-raster-data-by-pixel-coordinates)
-    * [Read rasta data by bounding box](#read-rasta-data-by-bounding-box)
+    * [Read raster data by bounding box](#read-raster-data-by-bounding-box)
   * [Contribution](#contribution)
   * [Citation](#citation)<!-- endToc -->
 

@@ -139,6 +139,19 @@ data = dc.load_by_geom(bbox, dtype='numpy')
 <sup><a href='/tests/test_loading.py#L426-L429' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_bbox' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
+### Running the examples jupyter notebook
+
+We also provide a docker image with example data preinstalled which runs a jupyter server with our [feature example notebook](docs/notebooks/feature_examples.ipynb), 
+demonstrating the most important features of *yeoda*.
+
+```bash
+docker run --rm -it -p 8888:8888 tuwgeomrs/yeoda-doc:latest
+```
+
+Now you can navigate to `localhost:8888` in a web-browser of your choice, and try out features yourself using our example 
+data. For detailed explanation what the docker commands mean, see the [official docker documentation](https://docs.docker.com/engine/reference/run/).
+Also have a look at other docker images we provide at [docker hub](https://hub.docker.com/u/tuwgeomrs).
+
 
 ## Contribution
 We are happy if you want to contribute. Please raise an issue explaining what

@@ -14,3 +14,4 @@ dependencies:
     - veranda==0.1.0
     - geospade==0.1.1
     - geopathfinder==0.1.1
+    - nbsphinx

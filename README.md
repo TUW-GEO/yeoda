@@ -21,6 +21,7 @@
     * [Loading data from GeoTIFF files](#loading-data-from-geotiff-files)
     * [Read raster data by pixel coordinates](#read-raster-data-by-pixel-coordinates)
     * [Read raster data by bounding box](#read-raster-data-by-bounding-box)
+    * [Running the examples jupyter notebook](#running-the-examples-jupyter-notebook)
   * [Contribution](#contribution)
   * [Citation](#citation)<!-- endToc -->
 

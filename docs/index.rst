@@ -17,7 +17,7 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   Examples <examples>
+   Examples <notebooks/feature_examples.ipynb>
    Installation <install>
    Module Reference <api/modules>
    License <license>

@@ -50,3 +50,6 @@ MANIFEST
 
 # user scripts
 .scripts
+
+# ci scripts
+ci/docker/.build

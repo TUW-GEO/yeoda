@@ -1,36 +1,3 @@
-# Copyright (c) 2019, Vienna University of Technology (TU Wien), Department of
-# Geodesy and Geoinformation (GEO).
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-#    this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-#    this list of conditions and the following disclaimer in the documentation
-#    and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.
-#
-# The views and conclusions contained in the software and documentation are
-# those of the authors and should not be interpreted as representing official
-# policies, either expressed or implied, of the FreeBSD Project.
-
-"""
-Main code for creating data cubes.
-"""
-
 # general packages
 import copy
 import os
@@ -40,6 +7,7 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 from collections import OrderedDict
+from multiprocessing import Pool, Manager
 
 # geo packages
 from osgeo import osr
@@ -59,6 +27,7 @@ from geospade.raster import RasterGeometry
 from geospade.raster import SpatialRef
 from geospade.transform import xy2ij
 from geospade.transform import ij2xy
+from geospade.raster import MosaicGeometry
 
 # load yeoda's utils module
 from yeoda.utils import get_file_type
@@ -75,6 +44,16 @@ from yeoda.errors import FileTypeUnknown
 from yeoda.errors import DimensionUnkown
 from yeoda.errors import LoadingDataError
 from yeoda.errors import SpatialInconsistencyError
+
+
+PROC_OBJS = {}
+
+def read_init(fn_class):
+    PROC_OBJS['filename_class'] = fn_class
+
+def _parse_filepath(filepath):
+    filename_class = PROC_OBJS['filename_class']
+    fn = filename_class.from_filename(os.path.basename(filepath), convert=True)
 
 
 def _check_inventory(f):
@@ -278,9 +257,10 @@ class EODataCube:
         return coord_boundary
 
     @classmethod
-    def from_inventory(cls, inventory, grid=None, **kwargs):
+    def from_filepaths(cls, filepaths, filename_class, mosaic=None, dimensions=None, tile_dimension='tile',
+                       stack_dimension='time', use_metadata=False, **kwargs):
         """
-        Creates an `EODataCube` instance from a given inventory.
+        Creates an `EODataCube` instance from a list of filepaths.
 
         Parameters
         ----------
@@ -294,8 +274,29 @@ class EODataCube:
         EODataCube
             Data cube consisting of data stored in `inventory`.
         """
-
+        fn_dtypes = cls.__get_dtypes_from_fn(filename_class.from_filename(os.path.basename(filepaths[0])),
+                                             dimensions=dimensions)
+        md_dtypes = cls.__get_dtypes_from_md(filepaths[0])
+        manager = Manager()
+        shared_list = manager.list()
+        shared_dict = manager.dict()
+        for dimension in dimensions:
+            shared_dict[dimension] = manager.list()
+        with Pool(n_cores, initializer=read_init, initargs=(global_file_register, access_map, shm_map,
+                                                            auto_decode, decoder, decoder_kwargs)) as p:
+            p.map(read_vrt_stack, filepaths)
         return cls(inventory=inventory, grid=grid, **kwargs)
+
+    def __get_dtypes_from_fn(self, fn, dimensions=None):
+        dimensions = list(fn.keys()) if dimensions is None else dimensions
+        return {dimension: np.array(fn[dimension]).dtype for dimension in dimensions}
+
+    def __parse_filepath(filepath):
+
+
+    @classmethod
+    def from_disk(cls):
+        pass
 
     @_check_inventory
     def rename_dimensions(self, dimensions_map, inplace=False):

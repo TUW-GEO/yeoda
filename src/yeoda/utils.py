@@ -40,7 +40,7 @@ import numpy as np
 from osgeo import ogr
 from osgeo.gdal import __version__ as GDAL_VERSION
 GDAL_3_ENABLED = GDAL_VERSION[0] == '3'
-import pytileproj.geometry as geometry
+#import pytileproj.geometry as geometry
 import shapely.geometry
 from geospade import DECIMALS
 from geospade.crs import SpatialRef

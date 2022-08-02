@@ -1,13 +1,22 @@
 # general packages
 import copy
+import glob
 import os
 import re
+import uuid
+import abc
+import deprecation
 import netCDF4
 import pandas as pd
 import numpy as np
 import xarray as xr
+import warnings
+from typing import List, Tuple
+from tempfile import mkdtemp
+from datetime import datetime
 from collections import OrderedDict
-from multiprocessing import Pool, Manager
+from multiprocessing import Pool
+from collections import defaultdict
 
 # geo packages
 from osgeo import osr
@@ -17,11 +26,12 @@ from shapely.geometry import Polygon
 from geopandas import GeoSeries
 from geopandas import GeoDataFrame
 from geopandas.base import is_geometry_type
-import pytileproj.geometry as geometry
-from veranda.io.geotiff import GeoTiffFile
-from veranda.io.netcdf import NcFile
-from veranda.io.timestack import GeoTiffRasterTimeStack
-from veranda.io.timestack import NcRasterTimeStack
+
+from veranda.raster.native.geotiff import GeoTiffFile
+from veranda.raster.native.netcdf import NetCdf4File
+from veranda.raster.mosaic.geotiff import GeoTiffReader, GeoTiffWriter
+from veranda.raster.mosaic.netcdf import NetCdfReader, NetCdfWriter
+
 from geospade.tools import rasterise_polygon
 from geospade.raster import RasterGeometry
 from geospade.raster import SpatialRef
@@ -36,6 +46,7 @@ from yeoda.utils import to_list
 from yeoda.utils import swap_axis
 from yeoda.utils import get_polygon_envelope
 
+
 # load classes from yeoda's error module
 from yeoda.errors import IOClassNotFound
 from yeoda.errors import DataTypeUnknown
@@ -46,14 +57,21 @@ from yeoda.errors import LoadingDataError
 from yeoda.errors import SpatialInconsistencyError
 
 
+FILE_CLASS = {'.tif': GeoTiffFile,
+              '.nc': NetCdf4File}
+RASTER_DATA_CLASS = {'.tif': (GeoTiffReader, GeoTiffWriter),
+                     '.nc': (NetCdfReader, NetCdfWriter)}
 PROC_OBJS = {}
 
-def read_init(fn_class):
-    PROC_OBJS['filename_class'] = fn_class
 
-def _parse_filepath(filepath):
-    filename_class = PROC_OBJS['filename_class']
-    fn = filename_class.from_filename(os.path.basename(filepath), convert=True)
+def parse_init(filepaths, fn_class, file_class, fn_dims, md_dims, md_decoder, tmp_dirpath):
+    PROC_OBJS['filepaths'] = filepaths
+    PROC_OBJS['filename_class'] = fn_class
+    PROC_OBJS['file_class'] = file_class
+    PROC_OBJS['fn_dims'] = fn_dims
+    PROC_OBJS['md_dims'] = md_dims
+    PROC_OBJS['md_decoder'] = md_decoder
+    PROC_OBJS['tmp_dirpath'] = tmp_dirpath
 
 
 def _check_inventory(f):
@@ -112,14 +130,703 @@ def _set_status(status):
     return decorator
 
 
+def parse_filepath(slice_proc):
+    filepaths = PROC_OBJS['filepaths']
+    fn_class = PROC_OBJS['filename_class']
+    file_class = PROC_OBJS['file_class']
+    fn_dims = PROC_OBJS['fn_dims']
+    md_dims = PROC_OBJS['md_dims']
+    md_decoder = PROC_OBJS['md_decoder']
+    tmp_dirpath = PROC_OBJS['tmp_dirpath']
+
+    filepaths_proc = filepaths[slice_proc]
+    n_files = len(filepaths_proc)
+    fn_dict = defaultdict(lambda: [None] * n_files)
+    use_metadata = len(md_dims) > 0
+    if use_metadata:
+        md_decoder = {dim: md_decoder.get(dim, lambda x: x) for dim in md_dims}
+    for i, filepath in enumerate(filepaths_proc):
+        print(i)
+        fn = fn_class.from_filename(os.path.basename(filepath), convert=True)
+        for dim in fn_dims:
+            fn_dict[dim][i] = fn[dim]
+
+        if use_metadata:
+            with file_class(filepath, mode='r') as file:
+                for dim in md_dims:
+                    fn_dict[dim][i] = md_decoder[dim](file.metadata.get(dim, None))
+
+    df = pd.DataFrame(fn_dict)
+    tmp_filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex}.df"
+    tmp_filepath = os.path.join(tmp_dirpath, tmp_filename)
+    df.to_pickle(tmp_filepath)
+
+
+class DataCube(metaclass=abc.ABCMeta):
+    def __init__(self, raster_data):
+        self._raster_data = raster_data
+
+    @property
+    def mosaic(self) -> MosaicGeometry:
+        """ Mosaic geometry of the raster mosaic files. """
+        return self._raster_data.mosaic
+
+    @property
+    def n_tiles(self) -> int:
+        """ Number of tiles. """
+        return self._raster_data.n_tiles
+
+    @property
+    def data_geom(self) -> RasterGeometry:
+        """ Raster/tile geometry of the raster mosaic files. """
+        return self._raster_data.data_geom
+
+    @property
+    def file_register(self) -> pd.DataFrame:
+        """ File register of the raster data object. """
+        return self._raster_data.file_register
+
+    @property
+    def filepaths(self) -> List[str]:
+        """ Unique list of file paths stored in the file register. """
+        return self._raster_data.filepaths
+
+    @property
+    def data_view(self) -> xr.Dataset:
+        """ View on internal raster data. """
+        return self._raster_data.data_view
+
+    def rename_dimensions(self, dimensions_map, inplace=False) -> "DataCube":
+        """
+        Renames the dimensions of the data cube.
+
+        Parameters
+        ----------
+        dimensions_map : dict
+            A dictionary representing the relation between old and new dimension names. The keys are the old dimension
+            names, the values the new dimension names (e.g., {'time_begin': 'time'}).
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        DataCube
+            `DataCube` object with renamed dimensions/columns of the inventory.
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.rename_dimensions(dimensions_map, inplace=True)
+
+        for old_dimension in list(dimensions_map.keys()):
+            if self._raster_data._file_dim == old_dimension:
+                self._raster_data._file_dim = dimensions_map[old_dimension]
+            if self._raster_data._tile_dim == old_dimension:
+                self._raster_data._tile_dim = dimensions_map[old_dimension]
+
+        self._raster_data._file_register.rename(columns=dimensions_map, inplace=True)
+        return self
+
+    def add_dimension(self, name, values, inplace=False) -> "DataCube":
+        """
+        Adds a new dimension to the data cube.
+
+        Parameters
+        ----------
+        name : str
+            Name of the new dimension
+        values : list
+            Values of the new dimension (e.g., cloud cover, quality flag, ...).
+            They have to have the same length as all the rows in the inventory.
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        DataCube
+            `DataCube` object with an additional dimension in the inventory.
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.add_dimension(name, values, inplace=True)
+
+        ds = pd.Series(values, index=self.file_register.index)
+        self._raster_data._file_register[name] = ds
+
+        return self
+
+    def select_files_with_pattern(self, pattern, full_path=False, inplace=False) -> "DataCube":
+        """
+        Filters all filepaths according to the given pattern.
+
+        Parameters
+        ----------
+        pattern : str
+            A regular expression (e.g., ".*S1A.*GRD.*").
+        full_path : boolean, optional
+            Uses the full file paths for filtering if it is set to True.
+            Otherwise the filename is used (default value is False).
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        DataCube
+            `DataCube` object with a filtered inventory according to the given pattern.
+
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.select_files_with_pattern(pattern, full_path=full_path, inplace=True)
+
+        pattern = re.compile(pattern)
+        if not full_path:
+            file_filter = lambda x: re.search(pattern, os.path.basename(x)) is not None
+        else:
+            file_filter = lambda x: re.search(pattern, x) is not None
+        idx_filter = [file_filter(filepath) for filepath in self.filepaths]
+        self._raster_data._file_register = self._raster_data._file_register[idx_filter]
+
+        return self
+
+    def sort_by_dimension(self, name, ascending=True, inplace=False) -> "DataCube":
+        """
+        Sorts the data cube/inventory according to the given dimension.
+
+        Parameters
+        ----------
+        name : str
+            Name of the dimension.
+        ascending : bool, optional
+            If true, sorts in ascending order, otherwise in descending order.
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        DataCube
+            Sorted DataCube object.
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.sort_by_dimension(name, ascending=ascending, inplace=True)
+
+        self._raster_data._file_register.sort_values(by=name, ascending=ascending, inplace=True)
+
+        return self
+
+    def select_by_dimension(self, expressions, name=None, inplace=False) -> "DataCube":
+        """
+        Filters the data cube according to the given extents and returns a (new) data cube.
+
+        Parameters
+        ----------
+        expressions : list, tuple, list of tuples or list of lists, optional
+            Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
+            are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
+            They have to have the same length as 'values'. The following comparison operators are allowed:
+            - '==': equal to
+            - '>=': larger than or equal to
+            - '<=': smaller than or equal to
+            - '>':  larger than
+            - '<':  smaller than
+        name : str, optional
+            Name of the dimension.
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        DataCube
+            Filtered DataCube object.
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.select_by_dimension(expressions, name=name, inplace=True)
+
+        name = self._raster_data._file_dim if name is None else name
+        sel_mask = np.zeros(len(self._raster_data._file_register), dtype=bool)
+        for expression in to_list(expressions):
+            sel_mask = sel_mask | expression(self._raster_data._file_register[name])
+        self._raster_data._file_register = self._raster_data._file_register[sel_mask]
+
+        return self
+
+    def split_by_dimension(self, expressions, name=None) -> List["DataCube"]:
+        """
+        Filters the data cube according to the given extents and returns a (new) data cube.
+
+        Parameters
+        ----------
+        expressions : list, tuple, list of tuples or list of lists, optional
+            Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
+            are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
+            They have to have the same length as 'values'. The following comparison operators are allowed:
+            - '==': equal to
+            - '>=': larger than or equal to
+            - '<=': smaller than or equal to
+            - '>':  larger than
+            - '<':  smaller than
+        name : str, optional
+            Name of the dimension.
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        datacubes : list
+            Filtered DataCube objects.
+        """
+
+        datacubes = [self.select_by_dimension(expression, name=name, inplace=False)
+                     for expression in expressions]
+
+        return datacubes
+
+    def split_by_temporal_freq(self, time_freq, name=None) -> List["DataCube"]:
+        """
+        Filters the data cube according to the given extents and returns a (new) data cube.
+
+        Parameters
+        ----------
+        expressions : list, tuple, list of tuples or list of lists, optional
+            Mathematical expressions to filter the data accordingly. If none are given, the exact values from 'values'
+            are taken, otherwise the expressions are applied for each value and linked with an AND (e.g., ('>=', '<=')).
+            They have to have the same length as 'values'. The following comparison operators are allowed:
+            - '==': equal to
+            - '>=': larger than or equal to
+            - '<=': smaller than or equal to
+            - '>':  larger than
+            - '<':  smaller than
+        name : str, optional
+            Name of the dimension.
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        datacubes : list
+            Filtered DataCube objects.
+        """
+        name = name if name is not None else self._raster_data._file_dim
+        min_time, max_time = min(self.file_register[name]), max(self.file_register[name])
+        time_ranges = pd.date_range(min_time, max_time, freq=time_freq)
+        expressions = [lambda x: time_ranges[i] <= x <= time_ranges[i + 1]
+                       for i in range(len(time_ranges) - 1)]
+
+        return self.split_by_dimension(expressions, name=name)
+
+    def select_tiles(self, tile_names, inplace=False) -> "DataCube":
+        """
+        Selects certain tiles from a datacube.
+
+        Parameters
+        ----------
+        tile_names : list of str
+            Tile names/IDs.
+        inplace : bool, optional
+            If True, the current datacube is modified.
+            If False, a new datacube instance will be returned (default).
+
+        Returns
+        -------
+        DataCube :
+            DataCube object with a mosaic and a file register only consisting of the given tiles.
+
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.select_tiles(tile_names, inplace=True)
+
+        self._raster_data.select_tiles(tile_names, inplace=True)
+
+        return self
+
+    def select_px_window(self, row, col, height=1, width=1, inplace=False) -> "DataCube":
+        """
+        Selects the pixel coordinates according to the given pixel window.
+
+        Parameters
+        ----------
+        row : int
+            Top-left row number of the pixel window anchor.
+        col : int
+            Top-left column number of the pixel window anchor.
+        height : int, optional
+            Number of rows/height of the pixel window. Defaults to 1.
+        width : int, optional
+            Number of columns/width of the pixel window. Defaults to 1.
+        inplace : bool, optional
+            If True, the current datacube is modified.
+            If False, a new datacube instance will be returned (default).
+
+        Returns
+        -------
+        Data :
+            Raster data object with a data and a mosaic geometry only consisting of the intersected tile with the
+            pixel window.
+
+        Notes
+        -----
+        The mosaic will be only sliced if it consists of one tile to prevent ambiguities in terms of the definition
+        of the pixel window.
+
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.select_px_window(row, col, height=height, width=width, inplace=True)
+
+        self._raster_data.select_px_window(row, col, height=height, width=width, inplace=True)
+
+        return self
+
+    def select_xy(self, x, y, sref=None, inplace=False) -> "DataCube":
+        """
+        Selects a pixel according to the given coordinate tuple.
+
+        Parameters
+        ----------
+        x : number
+            Coordinate in X direction.
+        y : number
+            Coordinate in Y direction.
+        sref : geospade.crs.SpatialRef, optional
+            CRS of the given coordinate tuple. Defaults to the CRS of the mosaic.
+        inplace : bool, optional
+            If True, the current datacube is modified.
+            If False, a new datacube instance will be returned (default).
+
+        Returns
+        -------
+        DataCube :
+            Raster data object with a file register and a mosaic only consisting of the intersected tile containing
+            information on the location of the time series.
+
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.select_xy(x, y, sref=sref, inplace=True)
+
+        self._raster_data.select_xy(x, y, sref=sref, inplace=True)
+
+        return self
+
+    def select_bbox(self, bbox, sref=None, inplace=False) -> "DataCube":
+        """
+        Selects tile and pixel coordinates according to the given bounding box.
+
+        Parameters
+        ----------
+        bbox : list of 2 2-tuple
+            Bounding box to select, i.e. [(x_min, y_min), (x_max, y_max)]
+        sref : geospade.crs.SpatialRef, optional
+            CRS of the given bounding box coordinates. Defaults to the CRS of the mosaic.
+        inplace : bool, optional
+            If True, the current datacube object is modified.
+            If False, a new datacube instance will be returned (default).
+
+        Returns
+        -------
+        DataCube :
+            Raster data object with a file register and a mosaic only consisting of the intersected tiles.
+
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.select_bbox(bbox, sref=sref, inplace=True)
+
+        return self.select_polygon(bbox, apply_mask=False, inplace=inplace)
+
+    def select_polygon(self, polygon, sref=None, apply_mask=True, inplace=False) -> "DataCube":
+        """
+        Selects tile and pixel coordinates according to the given polygon.
+
+        Parameters
+        ----------
+        polygon : ogr.Geometry
+            Polygon specifying the pixels to collect.
+        sref : geospade.crs.SpatialRef, optional
+            CRS of the given bounding box coordinates. Defaults to the CRS of the mosaic.
+        apply_mask : bool, optional
+            True if pixels outside the polygon should be set to a no data value (default).
+            False if every pixel withing the bounding box of the polygon should be included.
+        inplace : bool, optional
+            If True, the current datacube object is modified.
+            If False, a new datacube instance will be returned (default).
+
+        Returns
+        -------
+        DataCube :
+            Raster data object with a file register and a mosaic only consisting of the intersected tiles.
+
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.select_polygon(polygon, sref=sref, apply_mask=apply_mask, inplace=True)
+
+        self._raster_data.select_polygon(polygon, sref=sref, apply_mask=apply_mask, inplace=True)
+
+        return self
+
+    def intersect(self, other, on_dimension=None, inplace=False) -> "DataCube":
+        """
+        Intersects this data cube with another data cube. This is equal to an SQL INNER JOIN operation.
+        In other words:
+            - all uncommon columns and rows (if `on_dimension` is given) are removed
+            - duplicates are removed
+
+        Parameters
+        ----------
+        other : DataCube
+            Data cube to intersect with.
+        on_dimension : str, optional
+            Dimension name to intersect on, meaning that only equal entries along this dimension will be retained.
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default is False).
+
+        Returns
+        -------
+        EODataCube
+            Intersected data cubes.
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.intersect(other, on_dimension=on_dimension, inplace=True)
+
+        # close all open file handles before operation
+        self.close()
+        other.close()
+
+        self._check_dc_compliance(other)
+
+        file_registers = [self.file_register, other.file_register]
+        intsct_fr = pd.concat(file_registers, ignore_index=True, join='inner')
+        if on_dimension is not None:
+            all_vals = []
+            for file_register in file_registers:
+                all_vals.append(list(file_register[on_dimension]))
+            common_vals = list(set.intersection(*map(set, all_vals)))
+            intsct_fr = intsct_fr[intsct_fr[on_dimension].isin(common_vals)]
+
+        intsct_fr = intsct_fr.drop_duplicates().reset_index(drop=True)
+        self._raster_data._file_register = intsct_fr
+        self.add_dimension("file_id", [None] * len(self), inplace=True)
+
+        return self
+
+    def unite(self, other, inplace=False) -> "DataCube":
+        """
+        Unites this data cube with respect to another data cube. This is equal to an SQL UNION operation.
+        In other words:
+            - all columns are put into one DataFrame
+            - duplicates are removed
+            - gaps are filled with NaN
+
+        Parameters
+        ----------
+        other : DataCube
+            Data cube to unite with.
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default is False).
+
+        Returns
+        -------
+        DataCube
+            United datacubes.
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.unite(other, inplace=True)
+
+        # close all open file handles before operation
+        self.close()
+        other.close()
+
+        self._check_dc_compliance(other)
+
+        file_registers = [self.file_register, other.file_register]
+        # this is a SQL alike UNION operation
+        united_frs = pd.concat(file_registers, ignore_index=True, sort=False).drop_duplicates().reset_index(drop=True)
+        self._raster_data._file_register = united_frs
+        self.add_dimension("file_id", [None] * len(self), inplace=True)
+
+        return self
+
+    def align_dimension(self, other, name, inplace=False) -> "DataCube":
+        """
+        Aligns this data cube with another data cube along the specified dimension `name`.
+
+        Parameters
+        ----------
+        other : EDataCube
+            Data cube to align with.
+        name : str
+            Name of the dimension, which is used for aligning/filtering the values for all data cubes.
+        inplace : boolean, optional
+            If true, the current class instance will be altered.
+            If false, a new class instance will be returned (default value is False).
+
+        Returns
+        -------
+        DataCube
+            Datacube with common values along the given dimension with respect to another data cube.
+        """
+        if not inplace:
+            new_datacube = copy.deepcopy(self)
+            return new_datacube.align_dimension(other, name=name, inplace=True)
+
+        self._check_dc_compliance(other)
+
+        this_dim_values = list(self.file_register[name])
+        uni_values = list(set(this_dim_values))
+        other_dim_values = other.file_register[name]
+        idxs = np.zeros(len(other_dim_values)) - 1  # set -1 as no data value
+
+        for i in range(len(uni_values)):
+            val_idxs = np.where(uni_values[i] == other_dim_values)
+            idxs[val_idxs] = this_dim_values.index(uni_values[i])  # get index of value in this data cube
+
+        idxs = idxs[idxs != -1]
+        if len(idxs) > 0:
+            # close all open file handles before operation
+            self.close()
+            other.close()
+
+            self._raster_data._file_register = self._raster_data._file_register.iloc[idxs].reset_index(drop=True)
+        else:
+            wrn_msg = "No common dimension values found. Original datacube is returned."
+            warnings.warn(wrn_msg)
+
+        return self
+
+    def _check_dc_compliance(self, other):
+
+        if self._file_dim != other._file_dim:
+            err_msg = f"Both datacubes must have the same file dimension ({self._file_dim} != {other._file_dim})."
+            raise ValueError(err_msg)
+        if self._tile_dim != other._tile_dim:
+            err_msg = f"Both datacubes must have the same tile dimension ({self._tile_dim} != {other._tile_dim})."
+            raise ValueError(err_msg)
+
+    def apply_nan(self):
+        """
+        Converts no data values given as an attribute '_FillValue' to np.nan. Note that this replacement implicitly
+        converts the data format to float.
+
+        """
+        self._raster_data.apply_nan()
+
+    def close(self):
+        """ Closes open file handles. """
+        self._raster_data.close()
+
+    def clear_ram(self):
+        """ Releases memory allocated by the internal data object. """
+        self._raster_data.clear_ram()
+
+    def clone(self) -> "DataCube":
+        """
+        Clones, i.e. deep-copies a datacube.
+
+        Returns
+        -------
+        DataCube
+            Cloned/copied datacube.
+        """
+
+        return copy.deepcopy(self)
+
+    def __getitem__(self, dimension_name) -> pd.Series:
+        """
+        Returns a column of the internal inventory according to the given column name/item.
+
+        Parameters
+        ----------
+        dimension_name : str
+            Column/Dimension name of the datacube file register.
+
+        Returns
+        -------
+        pandas.DataSeries
+            Column of the internal inventory.
+
+        """
+
+        if dimension_name in self.file_register.columns:
+            return self.file_register[dimension_name]
+        else:
+            raise DimensionUnkown(dimension_name)
+
+    def __len__(self):
+        return len(self.file_register)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.close()
+
+    def __deepcopy__(self, memo):
+        """
+        Deepcopy method of the `DataCube` class.
+
+        Parameters
+        ----------
+        memo : dict
+
+        Returns
+        -------
+        DataCube
+            Deepcopy of a datacube.
+
+        """
+
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            setattr(result, k, copy.deepcopy(v, memo))
+
+        return result
+
+    def __repr__(self) -> str:
+        """ General string representation of a datacube instance. """
+        return f"{self.__class__.__name__}({self._raster_data._file_dim}, {self.mosaic.__class__.__name__}):\n\n" \
+               f"{repr(self.file_register)}"
+
+
+class DataCubeReader(DataCube):
+    def __init__(self, file_register, mosaic, stack_dimension='layer_id', tile_dimension='tile_id', **kwargs):
+        ref_filepath = file_register['filepath'].iloc[0]
+        reader_class = RASTER_DATA_CLASS[os.path.basename(ref_filepath)[-1]][0]
+        reader = reader_class()
+        super().__init__()
+
+    def read(self):
+        pass
+
+class DataCubeWriter(DataCube):
+    pass
+
+
+@deprecation.deprecated(deprecated_in="1.0.0",
+                        current_version="1.0.0",
+                        details="Use DataCubeReader or DataCubeWriter instead")
 class EODataCube:
     """
     A file(name) based data cube for preferably gridded and well-structured EO data.
 
     """
 
-    def __init__(self, filepaths=None, grid=None, filename_class=None, dimensions=None, inventory=None,
-                 io_map=None, sdim_name="tile", tdim_name="time"):
+    def __init__(self, file_register, mosaic=None, data=None, tile_dimension="tile", stack_dimension="time"):
         """
         Constructor of the `EODataCube` class.
 
@@ -146,7 +853,8 @@ class EODataCube:
         tdim_name : str, optional
             Name of the temporal dimension (default is 'time').
         """
-
+        self._reader = None
+        self._writer = None
         # initialise simple class variables
         self._ds = None  # data set pointer
         self.status = None
@@ -157,7 +865,7 @@ class EODataCube:
         if io_map is not None:
             self.io_map = io_map
         else:
-            self.io_map = {'GeoTIFF': GeoTiffFile, 'NetCDF': NcFile}
+            self.io_map = {'GeoTIFF': GeoTiffFile, 'NetCDF': NetCdf4File}
 
         # create inventory from found filepaths
         self.inventory = None
@@ -258,7 +966,7 @@ class EODataCube:
 
     @classmethod
     def from_filepaths(cls, filepaths, filename_class, mosaic=None, dimensions=None, tile_dimension='tile',
-                       stack_dimension='time', use_metadata=False, **kwargs):
+                       stack_dimension='time', use_metadata=False, md_decoder=None, n_cores=1, **kwargs):
         """
         Creates an `EODataCube` instance from a list of filepaths.
 
@@ -274,25 +982,85 @@ class EODataCube:
         EODataCube
             Data cube consisting of data stored in `inventory`.
         """
-        fn_dtypes = cls.__get_dtypes_from_fn(filename_class.from_filename(os.path.basename(filepaths[0])),
-                                             dimensions=dimensions)
-        md_dtypes = cls.__get_dtypes_from_md(filepaths[0])
-        manager = Manager()
-        shared_list = manager.list()
-        shared_dict = manager.dict()
+        md_decoder = {} if md_decoder is None else md_decoder
+        n_files = len(filepaths)
+        step = int(n_files/n_cores)
+        slices = []
+        for i in range(0, n_files, step):
+            slices.append(slice(i, i + step))
+        slices[-1] = slice(slices[-1].start, n_files + 1)
+
+        ref_filepath = filepaths[0]
+        fn_dims = cls.__get_dims_from_fn(filename_class.from_filename(ref_filepath), dimensions=dimensions)
+        md_dims = [] if not use_metadata else cls.__get_dims_from_md(ref_filepath, dimensions=dimensions)
+        file_class = FILE_CLASS[os.path.splitext(ref_filepath)[-1]]
+        tmp_dirpath = mkdtemp()
+        with Pool(n_cores, initializer=parse_init, initargs=(filepaths, filename_class, file_class, fn_dims, md_dims,
+                                                             md_decoder, tmp_dirpath)) as p:
+           p.map(parse_filepath, slices)
+
+        df_filepaths = glob.glob(os.path.join(tmp_dirpath, "*.df"))
+        df = pd.concat([pd.read_pickle(df_filepath) for df_filepath in df_filepaths])
+
+        return cls(df)
+
+
+    #parse_filepath(filepaths, fn_map)
+        # c_dtype = np.ctypeslib.as_ctypes_type('char')
+        # for dimension in dimensions:
+        #     data_nshm = np.ones((n_files,), dtype=fn_dtypes[dimension])
+        #     c_dtype = np.ctypeslib.as_ctypes_type(data_nshm.dtype)
+        #     shm_rar = RawArray(c_dtype, data_nshm.size)
+        #     shm_data = np.frombuffer(shm_rar, dtype=fn_dtypes[dimension])
+        #     shm_data[:] = data_nshm[:]
+        #     shm_map[dimension] = shm_data
+
+
+
+        pass
+        return #cls(inventory=inventory, grid=grid, **kwargs)
+
+    # @staticmethod
+    # def __get_dims_from_fn(fn, dimensions=None):
+    #     dimensions = list(fn.fields_def.keys()) if dimensions is None else dimensions
+    #     return {dimension: np.array(fn[dimension]).dtype for dimension in dimensions}
+
+    @staticmethod
+    def __get_dims_from_fn(fn, dimensions=None):
+        fn_dims = list(fn.fields_def.keys())
+        if dimensions is not None:
+            fn_dims = list(set(fn_dims).intersection(set(dimensions)))
+        return fn_dims
+
+    @staticmethod
+    def __get_dims_from_md(filepath, dimensions=None):
+        file_class = FILE_CLASS[os.path.splitext(filepath)[1]]
+        with file_class(filepath, mode='r') as file:
+            md = file.metadata
+            md_dims = list(md.keys())
+            if dimensions is not None:
+                md_dims = list(set(dimensions).intersection(md_dims))
+
+            return md_dims
+
+    def __parse_filepath(self, file_idx):
+        print(file_idx)
+        shm_map = PROC_OBJS['shm_map']
+        filepaths = PROC_OBJS['filepaths']
+        fn_class = PROC_OBJS['filename_class']
+        filepath = filepaths[file_idx]
+        file_class = self.__io_class(get_file_type(filepath))
+        fn = fn_class.from_filename(os.path.basename(filepath), convert=True)
+        fn_dims = list(fn.fields_def.keys())
+        dimensions = list(shm_map.keys())
         for dimension in dimensions:
-            shared_dict[dimension] = manager.list()
-        with Pool(n_cores, initializer=read_init, initargs=(global_file_register, access_map, shm_map,
-                                                            auto_decode, decoder, decoder_kwargs)) as p:
-            p.map(read_vrt_stack, filepaths)
-        return cls(inventory=inventory, grid=grid, **kwargs)
-
-    def __get_dtypes_from_fn(self, fn, dimensions=None):
-        dimensions = list(fn.keys()) if dimensions is None else dimensions
-        return {dimension: np.array(fn[dimension]).dtype for dimension in dimensions}
-
-    def __parse_filepath(filepath):
-
+            shm_rar = shm_map[dimension]
+            if dimension in fn_dims:
+                value = fn[dimension]
+            else:
+                with file_class(filepath, mode='r') as file:
+                    value = file.metadata[dimension]
+            shm_map[dimension][file_idx] = value
 
     @classmethod
     def from_disk(cls):

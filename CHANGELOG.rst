@@ -2,6 +2,12 @@
 Changelog
 =========
 
+Version 1.0.0
+=============
+
+- major changes towards new datacube classes
+- updates to support new major veranda and geospade version
+
 Version 0.3.0
 =============
 

@@ -807,14 +807,80 @@ class DataCubeReader(DataCube):
     def __init__(self, file_register, mosaic, stack_dimension='layer_id', tile_dimension='tile_id', **kwargs):
         ref_filepath = file_register['filepath'].iloc[0]
         reader_class = RASTER_DATA_CLASS[os.path.basename(ref_filepath)[-1]][0]
-        reader = reader_class()
-        super().__init__()
+        reader = reader_class(file_register, mosaic, stack_dimension=stack_dimension, tile_dimension=tile_dimension,
+                              **kwargs)
+        super().__init__(reader)
+
+    @classmethod
+    def from_filepaths(cls, filepaths, filename_class, mosaic=None, dimensions=None, tile_dimension='tile',
+                       stack_dimension='time', use_metadata=False, md_decoder=None, n_cores=1, **kwargs) -> "DataCube":
+        """
+        Creates an `EODataCube` instance from a list of filepaths.
+
+        Parameters
+        ----------
+        inventory : GeoDataFrame
+            Contains information about the dimensions (columns) and each filepath (rows).
+        grid : pytileproj.base.TiledProjection, optional
+            Tiled projection/grid object/class (e.g. `Equi7Grid`, `LatLonGrid`).
+
+        Returns
+        -------
+        EODataCube
+            Data cube consisting of data stored in `inventory`.
+        """
+        md_decoder = {} if md_decoder is None else md_decoder
+        n_files = len(filepaths)
+        step = int(n_files / n_cores)
+        slices = []
+        for i in range(0, n_files, step):
+            slices.append(slice(i, i + step))
+        slices[-1] = slice(slices[-1].start, n_files + 1)
+
+        ref_filepath = filepaths[0]
+        fn_dims = cls.__get_dims_from_fn(filename_class.from_filename(ref_filepath), dimensions=dimensions)
+        md_dims = [] if not use_metadata else cls.__get_dims_from_md(ref_filepath, dimensions=dimensions)
+        file_class = FILE_CLASS[os.path.splitext(ref_filepath)[-1]]
+        tmp_dirpath = mkdtemp()
+        with Pool(n_cores, initializer=parse_init, initargs=(filepaths, filename_class, file_class, fn_dims, md_dims,
+                                                             md_decoder, tmp_dirpath)) as p:
+            p.map(parse_filepath, slices)
+
+        df_filepaths = glob.glob(os.path.join(tmp_dirpath, "*.df"))
+        file_register = pd.concat([pd.read_pickle(df_filepath) for df_filepath in df_filepaths])
+
+        return cls(file_register, mosaic, stack_dimension=stack_dimension, tile_dimension=tile_dimension, **kwargs)
 
     def read(self):
-        pass
+        self._raster_data.read()
+
 
 class DataCubeWriter(DataCube):
-    pass
+    def __init__(self, mosaic, file_register=None, data=None, format='.nc', stack_dimension='layer_id',
+                 tile_dimension='tile_id', **kwargs):
+        format = format if file_register is None else os.path.basename(file_register['filepath'].iloc[0])[-1]
+        writer_class = RASTER_DATA_CLASS[format][1]
+        writer = writer_class(mosaic, file_register=file_register, data=data,
+                              stack_dimension=stack_dimension, tile_dimension=tile_dimension, **kwargs)
+        super().__init__(writer)
+
+    @classmethod
+    def from_data(cls, data, dirpath, filename_class, resampler, mosaic=None, stack_dimension='layer_id',
+                  tile_dimension='tile_id', fn_map=None):
+        pass
+
+
+    def write(self, data, apply_tiling=False, data_variables=None, encoder=None, encoder_kwargs=None, overwrite=False,
+              unlimited_dims=None, **kwargs):
+        self._raster_data(data, apply_tiling=apply_tiling, data_variables=data_variables, encoder=encoder,
+                          encoder_kwargs=encoder_kwargs, overwrite=overwrite, unlimited_dims=unlimited_dims, **kwargs)
+
+    def export(self, apply_tiling=False, data_variables=None, encoder=None, encoder_kwargs=None, overwrite=False,
+              unlimited_dims=None, **kwargs):
+        self._raster_data(apply_tiling=apply_tiling, data_variables=data_variables, encoder=encoder,
+                          encoder_kwargs=encoder_kwargs, overwrite=overwrite, unlimited_dims=unlimited_dims, **kwargs)
+
+
 
 
 @deprecation.deprecated(deprecated_in="1.0.0",

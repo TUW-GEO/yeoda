@@ -72,7 +72,7 @@ def parse_filepath(slice_proc):
     if use_metadata:
         md_decoder = {dim: md_decoder.get(dim, lambda x: x) for dim in md_dims}
     for i, filepath in enumerate(filepaths_proc):
-        print(i)
+        fn_dict['filepath'][i] = filepath
         fn = fn_class.from_filename(os.path.basename(filepath), convert=True)
         for dim in fn_dims:
             fn_dict[dim][i] = fn[dim]
@@ -212,7 +212,7 @@ class DataCube(metaclass=abc.ABCMeta):
             file_filter = lambda x: re.search(pattern, os.path.basename(x)) is not None
         else:
             file_filter = lambda x: re.search(pattern, x) is not None
-        idx_filter = [file_filter(filepath) for filepath in self.filepaths]
+        idx_filter = [file_filter(filepath) for filepath in self['filepath']]
         self._raster_data._file_register = self._raster_data._file_register[idx_filter]
 
         return self
@@ -467,7 +467,7 @@ class DataCube(metaclass=abc.ABCMeta):
             new_datacube = copy.deepcopy(self)
             return new_datacube.select_bbox(bbox, sref=sref, inplace=True)
 
-        return self.select_polygon(bbox, apply_mask=False, inplace=inplace)
+        return self.select_polygon(bbox, sref=sref, apply_mask=False, inplace=True)
 
     def select_polygon(self, polygon, sref=None, apply_mask=True, inplace=False) -> "DataCube":
         """
@@ -732,7 +732,7 @@ class DataCube(metaclass=abc.ABCMeta):
 class DataCubeReader(DataCube):
     def __init__(self, file_register, mosaic, stack_dimension='layer_id', tile_dimension='tile_id', **kwargs):
         ref_filepath = file_register['filepath'].iloc[0]
-        reader_class = RASTER_DATA_CLASS[os.path.basename(ref_filepath)[-1]][0]
+        reader_class = RASTER_DATA_CLASS[os.path.splitext(ref_filepath)[-1]][0]
         reader = reader_class(file_register, mosaic, stack_dimension=stack_dimension, tile_dimension=tile_dimension,
                               **kwargs)
         super().__init__(reader)
@@ -765,8 +765,8 @@ class DataCubeReader(DataCube):
         slices[-1] = slice(slices[-1].start, n_files + 1)
 
         ref_filepath = filepaths[0]
-        fn_dims = cls.__get_dims_from_fn(filename_class.from_filename(ref_filepath), dimensions=dimensions)
-        md_dims = [] if not use_metadata else cls.__get_dims_from_md(ref_filepath, dimensions=dimensions)
+        fn_dims = cls._get_dims_from_fn(filename_class.from_filename(os.path.basename(ref_filepath), convert=True), dimensions=dimensions)
+        md_dims = [] if not use_metadata else cls._get_dims_from_md(ref_filepath, dimensions=dimensions)
         file_class = FILE_CLASS[os.path.splitext(ref_filepath)[-1]]
         tmp_dirpath = mkdtemp()
         with Pool(n_cores, initializer=parse_init, initargs=(filepaths, filename_class, file_class, fn_dims, md_dims,
@@ -807,6 +807,27 @@ class DataCubeReader(DataCube):
             mosaic = MosaicGeometry.from_tile_list(tiles)
 
         return cls(file_register, mosaic, stack_dimension=stack_dimension, tile_dimension=tile_dimension, **kwargs)
+
+    @staticmethod
+    def _get_dims_from_fn(fn, dimensions=None):
+        fn_dims = list(fn.fields_def.keys())
+        if dimensions is not None:
+            fn_dims = list(set(fn_dims).intersection(set(dimensions)))
+            for dimension in dimensions:
+                if getattr(fn, dimension, False):
+                    fn_dims.append(dimension)
+        return fn_dims
+
+    @staticmethod
+    def _get_dims_from_md(filepath, dimensions=None):
+        file_class = FILE_CLASS[os.path.splitext(filepath)[1]]
+        with file_class(filepath, mode='r') as file:
+            md = file.metadata
+            md_dims = list(md.keys())
+            if dimensions is not None:
+                md_dims = list(set(dimensions).intersection(md_dims))
+
+            return md_dims
 
     def read(self):
         self._raster_data.read()

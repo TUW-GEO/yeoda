@@ -1,4 +1,3 @@
-# general packages
 import pprint
 
 
@@ -21,36 +20,6 @@ class IOClassNotFound(Exception):
 
         self.message = "The file type '{}' can not be related to any IO class. " \
                        "The available IO class are: \n {}".format(file_type, pprint.pformat(io_map))
-
-    def __str__(self):
-        """ String representation of this class. """
-
-        return self.message
-
-
-class DataTypeUnknown(Exception):
-    """ Class to handle exceptions thrown by mismatching data types."""
-
-    def __init__(self, dtype_in, dtype_out):
-        """
-        Constructor of `DataTypeUnknown`.
-
-        Parameters
-        ----------
-        dtype_in : str
-            Data type of the input data. It can be:
-                - 'xarray.DataSet'
-                - 'numpy.ndarray'
-                - 'pd.DataFrame'
-        dtype_out : str
-            Data type of the output data (default is 'xarray'). It can be:
-                - 'xarray'
-                - 'numpy'
-                - 'dataframe'
-        """
-
-        self.message = "Data conversion not possible for requested data type '{}' " \
-                       "and actual data type '{}'.".format(dtype_out, dtype_in)
 
     def __str__(self):
         """ String representation of this class. """
@@ -81,27 +50,6 @@ class FileTypeUnknown(Exception):
         return self.message
 
 
-class GeometryUnkown(Exception):
-    """ Class to handle exceptions thrown by unknown geometry types."""
-
-    def __init__(self, geometry):
-        """
-        Constructor of `GeometryUnknown`.
-
-        Parameters
-        ----------
-        geometry : ogr.Geometry or shapely.geometry or list or tuple, optional
-            A vector geometry.
-        """
-
-        self.message = "The given geometry type '{}' cannot be used.".format(type(geometry))
-
-    def __str__(self):
-        """ String representation of this class. """
-
-        return self.message
-
-
 class DimensionUnkown(KeyError):
     """ Class to handle exceptions thrown by unknown dimensions/columns in the data cube inventory."""
 
@@ -116,56 +64,6 @@ class DimensionUnkown(KeyError):
         """
 
         self.message = "Dimension {} is unknown. Please add it to the data cube.".format(dimension_name)
-
-    def __str__(self):
-        """ String representation of this class. """
-
-        return self.message
-
-
-class TileNotAvailable(Exception):
-    """ Class to handle exceptions thrown by unknown tile names of a grid."""
-
-    def __init__(self, tilename):
-        """
-        Constructor of `DimensionUnknown`.
-
-        Parameters
-        ----------
-        tilename : str
-            Tile name corresponding to a grid and/or the inventory.
-        """
-
-        self.message = "The given tile '{}' is not available with the provided grid.".format(tilename)
-
-    def __str__(self):
-        """ String representation of this class. """
-
-        return self.message
-
-
-class LoadingDataError(IOError):
-    """ Class to handle exceptions thrown when it is not possible to read data."""
-
-    def __init__(self):
-        """Constructor of `LoadingDataError`."""
-
-        self.message = "Failed loading the data."
-
-    def __str__(self):
-        """ String representation of this class. """
-
-        return self.message
-
-
-class SpatialInconsistencyError(IOError):
-    """ Class to handle exceptions thrown when data cube content is not congruent in space."""
-
-    def __init__(self):
-        """Constructor of `SpatialInconsistencyError`."""
-
-        self.message = "Data cube contains spatially inconsistent data. " \
-                       "Filter along the spatial/tile dimension to create a congruent data cube."
 
     def __str__(self):
         """ String representation of this class. """

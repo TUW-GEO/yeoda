@@ -1,6 +1,5 @@
 import pytest
 import numpy as np
-from geospade.crs import SpatialRef
 from yeoda.datacube import DataCubeReader
 from geopathfinder.file_naming import SmartFilename
 from geopathfinder.naming_conventions.yeoda_naming import YeodaFilename
@@ -53,16 +52,16 @@ def test_sort_by_dimension(dc_reader):
     assert list(dc_reader['time']) == timestamps_sorted
 
 
-def test_split_time(dc_reader, gt_timestamps):
-    time_interval_1 = (gt_timestamps[0], gt_timestamps[1])
-    time_interval_2 = (gt_timestamps[2], gt_timestamps[-1])
+def test_split_time(dc_reader, timestamps):
+    time_interval_1 = (timestamps[0], timestamps[1])
+    time_interval_2 = (timestamps[2], timestamps[-1])
     expressions = [lambda t: (t >= time_interval_1[0]) & (t <= time_interval_1[1]),
                    lambda t: (t >= time_interval_2[0]) & (t <= time_interval_2[1])]
 
     dcs = dc_reader.split_by_dimension(expressions)
     assert len(dcs) == 2
-    assert sorted(list(set(dcs[0]['time']))) == gt_timestamps[:2]
-    assert sorted(list(set(dcs[1]['time']))) == gt_timestamps[2:]
+    assert sorted(list(set(dcs[0]['time']))) == timestamps[:2]
+    assert sorted(list(set(dcs[1]['time']))) == timestamps[2:]
 
 
 def test_split_yearly(dc_reader):
@@ -79,101 +78,96 @@ def test_split_monthly(dc_reader):
 
 
 def test_unite(gt_filepaths):
+    n = len(gt_filepaths)
     dimensions_1 = ['time', 'band', 'tile_name']
-    dc_reader_1 = DataCubeReader.from_filepaths(gt_filepaths, YeodaFilename, dimensions=dimensions_1,
+    dc_reader_1 = DataCubeReader.from_filepaths(gt_filepaths[:int(n/2)], YeodaFilename, dimensions=dimensions_1,
                                                 stack_dimension='time', tile_dimension='tile_name')
     dimensions_2 = ['time', 'var_name', 'tile_name']
-    dc_reader_2 = DataCubeReader.from_filepaths(gt_filepaths, YeodaFilename, dimensions=dimensions_2,
+    dc_reader_2 = DataCubeReader.from_filepaths(gt_filepaths[int(n/2):], YeodaFilename, dimensions=dimensions_2,
                                                 stack_dimension='time', tile_dimension='tile_name')
 
     dc_reader_united = dc_reader_1.unite(dc_reader_2)
-    assert 'pol' in dc_reader_united.dimensions
-    assert 'orbit_direction' in dc_reader_united.dimensions
-    assert len(dc_reader_united) == len(dc_reader_1)
-    #
-    # def test_intersect_empty(self):
-    #     """
-    #     Tests data cube intersection on the temporal dimension, i.e. if all data from a second datacube is properly
-    #     intersected with the data of to the original data cube according to matching timestamps. The result should be
-    #     empty due to non-overlapping timestamps.
-    #     """
-    #
-    #     # empty data cube when an intersection is applied
-    #     dc_1 = EODataCube(filepaths=self.gt_filepaths, filename_class=SgrtFilename,
-    #                       dimensions=['time', 'pol'])
-    #     dc_2 = EODataCube(filepaths=self.gt_filepaths, filename_class=SgrtFilename,
-    #                       dimensions=['time', 'orbit_direction'])
-    #     dc_1.inventory = dc_1.inventory[dc_1['time'] == self.timestamps[0]]
-    #     dc_2.inventory = dc_2.inventory[dc_2['time'] == self.timestamps[1]]
-    #     dc_intersected = dc_1.intersect(dc_2, on_dimension='time')
-    #     assert len(dc_intersected) == 0
-    #
-    # def test_intersect_dimensions(self):
-    #     """
-    #     Tests simple data cube intersection, i.e. if all data from a second datacube is properly
-    #     intersected with the data of to the original data cube.
-    #     """
-    #
-    #     dc_1 = EODataCube(filepaths=self.gt_filepaths, filename_class=SgrtFilename,
-    #                       dimensions=['time', 'pol'])
-    #     dc_2 = EODataCube(filepaths=self.gt_filepaths, filename_class=SgrtFilename,
-    #                       dimensions=['time', 'orbit_direction'])
-    #
-    #     dc_intersected = dc_1.intersect(dc_2)
-    #     assert len(dc_intersected) == len(self.gt_filepaths)
-    #     assert 'pol' not in dc_intersected.dimensions
-    #     assert 'orbit_direction' not in dc_intersected.dimensions
-    #     assert 'time' in dc_intersected.dimensions
-    #
-    # def test_intersect_align_dimension_shrink(self):
-    #     """
-    #     Tests matching of entries with two different methods, which should yield the same result: data cube
-    #     intersection and data cube alignment on the temporal dimension.
-    #     """
-    #
-    #     dc_1 = EODataCube(filepaths=self.gt_filepaths, filename_class=SgrtFilename,
-    #                       dimensions=['time'])
-    #     dc_2 = dc_1.clone()
-    #     dc_2.inventory = dc_2.inventory[dc_2['time'] != self.timestamps[0]]
-    #     dc_2.inventory = dc_2.inventory[dc_2['time'] != self.timestamps[2]]
-    #
-    #     dc_aligned = dc_1.align_dimension(dc_2, name='time', inplace=False)
-    #     dc_intersected = dc_1.intersect(dc_2, on_dimension='time', inplace=False)
-    #
-    #     assert sorted(list(dc_aligned['time'])) == sorted(list(dc_intersected['time']))
-    #
-    # def test_align_dimension_shrink(self):
-    #     """
-    #     Tests alignment of a data cube with another data cube along the temporal dimension. Since the second
-    #     data cube contains less data, the original data cube will also contain less data, i.e. the same timestamps as
-    #     in the other data cube.
-    #     """
-    #
-    #     dc_1 = EODataCube(filepaths=self.gt_filepaths, filename_class=SgrtFilename,
-    #                       dimensions=['time'])
-    #     dc_2 = dc_1.clone()
-    #     dc_2.inventory = dc_2.inventory[dc_2['time'] != self.timestamps[0]]
-    #     dc_2.inventory = dc_2.inventory[dc_2['time'] != self.timestamps[2]]
-    #
-    #     dc_1.align_dimension(dc_2, name='time', inplace=True)
-    #     assert sorted(list(set(dc_1['time']))) == [self.timestamps[1], self.timestamps[3]]
-    #
-    # def test_align_dimension_grow(self):
-    #     """
-    #     Tests alignment of a data cube with another data cube along the temporal dimension. Since the second
-    #     data cube contains more data, the original data cube will also contain more data, i.e. the same timestamps as
-    #     in the other data cube by duplicating the entries.
-    #     """
-    #
-    #     dc_1 = EODataCube(filepaths=self.gt_filepaths, filename_class=SgrtFilename,
-    #                       dimensions=['time'])
-    #     dc_2 = dc_1.clone()
-    #     timestamps = list(dc_1['time'])
-    #     subset_idxs = [timestamps.index(self.timestamps[0]),
-    #                    timestamps.index(self.timestamps[1]),
-    #                    timestamps.index(self.timestamps[2]),
-    #                    timestamps.index(self.timestamps[3])]
-    #     dc_1.inventory = dc_1.inventory.iloc[subset_idxs]
-    #
-    #     dc_1.align_dimension(dc_2, name='time', inplace=True)
-    #     assert (dc_1['time'] == dc_2['time']).all()
+    assert 'band' in dc_reader_united.dimensions
+    assert 'var_name' in dc_reader_united.dimensions
+    assert len(dc_reader_united) == (len(dc_reader_1) + len(dc_reader_2))
+
+
+def test_intersect_empty(gt_filepaths):
+    dimensions_1 = ['time', 'band', 'tile_name']
+    dc_reader_1 = DataCubeReader.from_filepaths(gt_filepaths[0:1], YeodaFilename, dimensions=dimensions_1,
+                                                stack_dimension='time', tile_dimension='tile_name')
+    dimensions_2 = ['time', 'var_name', 'tile_name']
+    dc_reader_2 = DataCubeReader.from_filepaths(gt_filepaths[1:2], YeodaFilename, dimensions=dimensions_2,
+                                                stack_dimension='time', tile_dimension='tile_name')
+    dc_reader_intsct = dc_reader_1.intersect(dc_reader_2, on_dimension='tile_name')
+    assert len(dc_reader_intsct) == 0
+
+
+def test_intersect_non_empty(gt_filepaths):
+    dimensions_1 = ['time', 'band', 'tile_name']
+    dc_reader_1 = DataCubeReader.from_filepaths(gt_filepaths[0:1], YeodaFilename, dimensions=dimensions_1,
+                                                stack_dimension='time', tile_dimension='tile_name')
+    dimensions_2 = ['time', 'var_name', 'tile_name']
+    dc_reader_2 = DataCubeReader.from_filepaths(gt_filepaths[1:2], YeodaFilename, dimensions=dimensions_2,
+                                                stack_dimension='time', tile_dimension='tile_name')
+    dc_reader_intsct = dc_reader_1.intersect(dc_reader_2, on_dimension='time')
+    assert len(dc_reader_intsct) == 2
+
+
+def test_intersect_dimensions(gt_filepaths):
+    dimensions_1 = ['time', 'band', 'tile_name']
+    dc_reader_1 = DataCubeReader.from_filepaths(gt_filepaths[0:1], YeodaFilename, dimensions=dimensions_1,
+                                                stack_dimension='time', tile_dimension='tile_name')
+    dimensions_2 = ['time', 'var_name', 'tile_name']
+    dc_reader_2 = DataCubeReader.from_filepaths(gt_filepaths[1:2], YeodaFilename, dimensions=dimensions_2,
+                                                stack_dimension='time', tile_dimension='tile_name')
+    dc_reader_intsct = dc_reader_1.intersect(dc_reader_2)
+    assert len(dc_reader_intsct) == 2
+    assert 'var_name' not in dc_reader_intsct.dimensions
+    assert 'band' not in dc_reader_intsct.dimensions
+    assert 'time' in dc_reader_intsct.dimensions
+
+
+def test_align_dimension_intersect_shrink(gt_filepaths):
+    dimensions = ['time', 'tile_name']
+    dc_reader_1 = DataCubeReader.from_filepaths(gt_filepaths, YeodaFilename, dimensions=dimensions,
+                                                stack_dimension='time', tile_dimension='tile_name')
+    dc_reader_2 = dc_reader_1.clone()
+    timestamps = list(set(dc_reader_1['time']))
+    timestamps_sel = timestamps[2:]
+    dc_reader_2.select_by_dimension(lambda t: t.isin(timestamps_sel), name='time', inplace=True)
+
+    dc_reader_aligned = dc_reader_1.align_dimension(dc_reader_2, name='time')
+    dc_reader_intersected = dc_reader_1.intersect(dc_reader_2, on_dimension='time')
+
+    assert sorted(list(dc_reader_aligned['time'])) == sorted(list(dc_reader_intersected['time']))
+
+
+def test_align_dimension_shrink(gt_filepaths):
+    dimensions = ['time', 'tile_name']
+    dc_reader_1 = DataCubeReader.from_filepaths(gt_filepaths, YeodaFilename, dimensions=dimensions,
+                                                stack_dimension='time', tile_dimension='tile_name')
+    dc_reader_2 = dc_reader_1.clone()
+    timestamps = sorted(list(set(dc_reader_1['time'])))
+    timestamps_sel = timestamps[2:]
+    dc_reader_2.select_by_dimension(lambda t: t.isin(timestamps_sel), name='time', inplace=True)
+
+    dc_reader_1.align_dimension(dc_reader_2, name='time', inplace=True)
+    assert sorted(list(set(dc_reader_1['time']))) == timestamps_sel
+
+
+def test_align_dimension_grow(gt_filepaths):
+    dimensions = ['time', 'tile_name']
+    dc_reader_1 = DataCubeReader.from_filepaths(gt_filepaths, YeodaFilename, dimensions=dimensions,
+                                                stack_dimension='time', tile_dimension='tile_name')
+    dc_reader_2 = dc_reader_1.clone()
+    timestamps = sorted(list(set(dc_reader_1['time'])))
+    timestamps_sel = timestamps[:1]
+    dc_reader_2.select_by_dimension(lambda t: t.isin(timestamps_sel), name='time', inplace=True)
+    tile_names = sorted(list(set(dc_reader_1['tile_name'])))
+    tile_names_sel = tile_names[:1]
+    dc_reader_2.select_by_dimension(lambda t: t.isin(tile_names_sel), name='tile_name', inplace=True)
+
+    dc_reader_2.align_dimension(dc_reader_1, name='time', inplace=True)
+    dc_reader_1.select_by_dimension(lambda t: t.isin(timestamps_sel), name='time', inplace=True)
+    assert len(dc_reader_1) == len(dc_reader_2)

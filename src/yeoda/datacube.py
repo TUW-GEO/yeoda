@@ -135,6 +135,11 @@ class DataCube(metaclass=abc.ABCMeta):
         """ View on internal raster data. """
         return self._raster_data.data_view
 
+    @property
+    def is_empty(self) -> bool:
+        """ Checks if datacube is empty, i.e. does not contain any files. """
+        return len(self) == 0
+
     def rename_dimensions(self, dimensions_map, inplace=False) -> "DataCube":
         """
         Renames the dimensions of the data cube.
@@ -283,6 +288,7 @@ class DataCube(metaclass=abc.ABCMeta):
         DataCube
             Filtered DataCube object.
         """
+
         if not inplace:
             new_datacube = copy.deepcopy(self)
             return new_datacube.select_by_dimension(expressions, name=name, inplace=True)
@@ -292,6 +298,9 @@ class DataCube(metaclass=abc.ABCMeta):
         for expression in to_list(expressions):
             sel_mask = sel_mask | expression(self._raster_data._file_register[name])
         self._raster_data._file_register = self._raster_data._file_register[sel_mask]
+
+        if name == self._raster_data._tile_dim:
+            self.select_tiles(list(set(self[name])), inplace=True)
 
         return self
 
@@ -359,7 +368,7 @@ class DataCube(metaclass=abc.ABCMeta):
         expressions = [lambda x, i=i: (x >= time_ranges[i]) & (x <= time_ranges[i + 1])
                        for i in range(len(time_ranges) - 1)]
 
-        return self.split_by_dimension(expressions, name=name)
+        return [dc for dc in self.split_by_dimension(expressions, name=name) if not dc.is_empty]
 
     def select_tiles(self, tile_names, inplace=False) -> "DataCube":
         """
@@ -648,11 +657,13 @@ class DataCube(metaclass=abc.ABCMeta):
 
     def _check_dc_compliance(self, other):
 
-        if self._file_dim != other._file_dim:
-            err_msg = f"Both datacubes must have the same file dimension ({self._file_dim} != {other._file_dim})."
+        if self._raster_data._file_dim != other._raster_data._file_dim:
+            err_msg = f"Both datacubes must have the same file dimension " \
+                      f"({self._raster_data._file_dim} != {other._raster_data._file_dim})."
             raise ValueError(err_msg)
-        if self._tile_dim != other._tile_dim:
-            err_msg = f"Both datacubes must have the same tile dimension ({self._tile_dim} != {other._tile_dim})."
+        if self._raster_data._tile_dim != other._raster_data._tile_dim:
+            err_msg = f"Both datacubes must have the same tile dimension " \
+                      f"({self._raster_data._tile_dim} != {other._raster_data._tile_dim})."
             raise ValueError(err_msg)
 
     def apply_nan(self):
@@ -738,7 +749,8 @@ class DataCube(metaclass=abc.ABCMeta):
 
     def __repr__(self) -> str:
         """ General string representation of a datacube instance. """
-        return f"{self.__class__.__name__}({self._raster_data._file_dim}, {self.mosaic.__class__.__name__}):\n\n" \
+        return f"{self.__class__.__name__} -> {self._raster_data.__class__.__name__}({self._raster_data._file_dim}, " \
+               f"{self.mosaic.__class__.__name__}):\n\n" \
                f"{repr(self.file_register)}"
 
 
@@ -896,8 +908,8 @@ class DataCubeReader(DataCube):
 
         return stack_ids
 
-    def read(self):
-        self._raster_data.read()
+    def read(self, *args, **kwargs):
+        self._raster_data.read(*args, **kwargs)
 
 
 class DataCubeWriter(DataCube):

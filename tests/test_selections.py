@@ -42,10 +42,10 @@ def test_select_pols_clone(dc_reader):
     assert list(set(dc_clone['band']))[0] == "VH"
 
 
-def test_select_time(dc_reader, gt_timestamps):
-    start_time, end_time = gt_timestamps[0], gt_timestamps[1]
+def test_select_time(dc_reader, timestamps):
+    start_time, end_time = timestamps[0], timestamps[1]
     dc_reader.select_by_dimension(lambda t: (t >= start_time) & (t <= end_time), inplace=True)
-    assert sorted(list(set(dc_reader['time']))) == gt_timestamps[:2]
+    assert sorted(list(set(dc_reader['time']))) == timestamps[:2]
 
 
 def test_select_var_names_vs_select(dc_reader):

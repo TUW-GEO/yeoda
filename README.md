@@ -110,7 +110,7 @@ dc.filter_by_dimension('SIG0', name='var_name', inplace=True)
 dc.filter_by_dimension('D', name='orbit_direction', inplace=True)
 dc.filter_spatially_by_tilename('E042N012T6', inplace=True, use_grid=False)
 ```
-<sup><a href='/tests/test_loading.py#L82-L90' title='Snippet source file'>snippet source</a> | <a href='#snippet-create_and_filter_datacube' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/test_reading.py#L82-L90' title='Snippet source file'>snippet source</a> | <a href='#snippet-create_and_filter_datacube' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ### Read raster data by pixel coordinates
@@ -123,7 +123,7 @@ function will return, in this case a numpy array (see [numpy](https://numpy.org/
 ```py
 data = dc.load_by_pixels(970, 246, row_size=10, col_size=16, dtype='numpy')
 ```
-<sup><a href='/tests/test_loading.py#L275-L277' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_pixels' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/test_reading.py#L275-L277' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_pixels' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ### Read raster data by bounding box
@@ -137,7 +137,7 @@ example a numpy array (see [numpy](https://numpy.org/) for details).
 bbox = [(4323250, 1309750), (4331250, 1314750)]
 data = dc.load_by_geom(bbox, dtype='numpy')
 ```
-<sup><a href='/tests/test_loading.py#L426-L429' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_bbox' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/tests/test_reading.py#L426-L429' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_bbox' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ### Running the examples jupyter notebook

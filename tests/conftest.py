@@ -21,21 +21,31 @@ def timestamps():
 
 
 @pytest.fixture(scope="session")
-def gt_filepaths(tmp_path_factory, timestamps):
-    tmp_path = str(tmp_path_factory.mktemp('gt_filepaths'))
-    pols = ["VV", "VH"]
-    var_names = ["VAR1", "VAR2"]
-    n_rows, n_cols = 1200, 1200
+def sref():
     sref_wkt = 'PROJCS["Azimuthal_Equidistant",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",' \
                'SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],' \
                'UNIT["Degree",0.017453292519943295]],PROJECTION["Azimuthal_Equidistant"],' \
                'PARAMETER["false_easting",5837287.81977],PARAMETER["false_northing",2121415.69617],' \
                'PARAMETER["central_meridian",24.0],PARAMETER["latitude_of_origin",53.0],UNIT["Meter",1.0]]"'
-    sref = SpatialRef(sref_wkt)
-    tiles = [Tile(n_rows, n_cols, sref, geotrans=(42e5, 500, 0, 24e5, 0, -500), name="E042N018T6"),
-             Tile(n_rows, n_cols, sref, geotrans=(48e5, 500, 0, 24e5, 0, -500), name="E048N018T6"),
-             Tile(n_rows, n_cols, sref, geotrans=(48e5, 500, 0, 18e5, 0, -500), name="E048N012T6"),
-             Tile(n_rows, n_cols, sref, geotrans=(42e5, 500, 0, 18e5, 0, -500), name="E042N012T6")]
+    return SpatialRef(sref_wkt)
+
+
+@pytest.fixture(scope="session")
+def tiles(sref):
+    n_rows, n_cols = 1200, 1200
+    return [Tile(n_rows, n_cols, sref, geotrans=(42e5, 500, 0, 24e5, 0, -500), name="E042N018T6"),
+            Tile(n_rows, n_cols, sref, geotrans=(48e5, 500, 0, 24e5, 0, -500), name="E048N018T6"),
+            Tile(n_rows, n_cols, sref, geotrans=(48e5, 500, 0, 18e5, 0, -500), name="E048N012T6"),
+            Tile(n_rows, n_cols, sref, geotrans=(42e5, 500, 0, 18e5, 0, -500), name="E042N012T6")]
+
+
+@pytest.fixture(scope="session")
+def gt_filepaths(tmp_path_factory, timestamps, tiles):
+    tmp_path = str(tmp_path_factory.mktemp('gt_filepaths'))
+    pols = ["VV", "VH"]
+    var_names = ["VAR1", "VAR2"]
+    ref_tile = tiles[0]
+    n_rows, n_cols = ref_tile.shape
     tile_names = [tile.name for tile in tiles]
     combs = itertools.product(timestamps, pols, var_names, tile_names)
     rows, cols = np.meshgrid(np.arange(0, n_rows), np.arange(0, n_cols))
@@ -59,21 +69,12 @@ def gt_filepaths(tmp_path_factory, timestamps):
 
 
 @pytest.fixture(scope="session")
-def nc_filepaths(tmp_path_factory, timestamps):
+def nc_filepaths(tmp_path_factory, timestamps, tiles):
     tmp_path = str(tmp_path_factory.mktemp('nc_filepaths'))
     pols = ["VV", "VH"]
     var_names = ["VAR1", "VAR2"]
-    n_rows, n_cols = 1200, 1200
-    sref_wkt = 'PROJCS["Azimuthal_Equidistant",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",' \
-               'SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],' \
-               'UNIT["Degree",0.017453292519943295]],PROJECTION["Azimuthal_Equidistant"],' \
-               'PARAMETER["false_easting",5837287.81977],PARAMETER["false_northing",2121415.69617],' \
-               'PARAMETER["central_meridian",24.0],PARAMETER["latitude_of_origin",53.0],UNIT["Meter",1.0]]"'
-    sref = SpatialRef(sref_wkt)
-    tiles = [Tile(n_rows, n_cols, sref, geotrans=(42e5, 500, 0, 24e5, 0, -500), name="E042N018T6"),
-             Tile(n_rows, n_cols, sref, geotrans=(48e5, 500, 0, 24e5, 0, -500), name="E048N018T6"),
-             Tile(n_rows, n_cols, sref, geotrans=(48e5, 500, 0, 18e5, 0, -500), name="E048N012T6"),
-             Tile(n_rows, n_cols, sref, geotrans=(42e5, 500, 0, 18e5, 0, -500), name="E042N012T6")]
+    ref_tile = tiles[0]
+    n_rows, n_cols = ref_tile.shape
     tile_names = [tile.name for tile in tiles]
     combs = itertools.product(timestamps, pols, var_names, tile_names)
     rows, cols = np.meshgrid(np.arange(0, n_rows), np.arange(0, n_cols))

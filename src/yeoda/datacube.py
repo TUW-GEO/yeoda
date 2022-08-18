@@ -913,38 +913,48 @@ class DataCubeReader(DataCube):
 
 
 class DataCubeWriter(DataCube):
-    def __init__(self, mosaic, file_register=None, data=None, format='.nc', stack_dimension='layer_id',
+    def __init__(self, mosaic, file_register=None, data=None, ext='.nc', stack_dimension='layer_id',
                  tile_dimension='tile_id', **kwargs):
-        format = format if file_register is None else os.path.basename(file_register['filepath'].iloc[0])[-1]
-        writer_class = RASTER_DATA_CLASS[format][1]
+        ext = ext if file_register is None else os.path.splitext(file_register['filepath'].iloc[0])[-1]
+        writer_class = RASTER_DATA_CLASS[ext][1]
         writer = writer_class(mosaic, file_register=file_register, data=data,
                               stack_dimension=stack_dimension, tile_dimension=tile_dimension, **kwargs)
         super().__init__(writer)
 
     @classmethod
-    def from_data(cls, data, dirpath, filename_class=None, stack_groups=None, fn_groups_map=None, def_fields=None,
-                  format='.nc', mosaic=None, stack_dimension='layer_id', tile_dimension='tile_id', **kwargs) -> "DataCubeWriter":
+    def from_data(cls, data, dirpath, filename_class=None, fn_map=None, def_fields=None,
+                  stack_groups=None, fn_groups_map=None,
+                  ext='.nc', mosaic=None, stack_dimension='layer_id', tile_dimension='tile_id', **kwargs) -> "DataCubeWriter":
 
-        tile_ids = ['0'] if mosaic is None else mosaic.all_tile_names
-        stack_ids = data[stack_dimension]
-        filepaths = cls._get_filepaths_from_tile_stack_ids(tile_ids, stack_ids, filename_class, dirpath,
-                                                           tile_dimension=tile_dimension,
-                                                           stack_dimension=stack_dimension,
-                                                           stack_groups=stack_groups,
-                                                           fn_groups_map=fn_groups_map,
-                                                           def_fields=def_fields)
+        writer_class = RASTER_DATA_CLASS[ext][1]
+        if mosaic is None:
+            mosaic = writer_class._mosaic_from_data(data)
 
+        tile_ids = mosaic.tile_names
+        stack_ids = data[stack_dimension].data
+        filepaths, stack_ids, tile_ids = cls._get_filepaths_from_tile_stack_ids(tile_ids, stack_ids,
+                                                                                filename_class, dirpath,
+                                                                                ext=ext,
+                                                                                tile_dimension=tile_dimension,
+                                                                                stack_dimension=stack_dimension,
+                                                                                fn_map=fn_map,
+                                                                                def_fields=def_fields,
+                                                                                stack_groups=stack_groups,
+                                                                                fn_groups_map=fn_groups_map)
         fr_dict = {'filepath': filepaths,
                    stack_dimension: stack_ids,
                    tile_dimension: tile_ids}
         file_register = pd.DataFrame(fr_dict)
-        writer_class = RASTER_DATA_CLASS[format][1]
-        return writer_class.from_xarray(data, file_register, mosaic=mosaic, **kwargs)
+
+        return cls(mosaic, file_register=file_register, data=data,  ext=ext,
+                   stack_dimension=stack_dimension, tile_dimension=tile_dimension, **kwargs)
 
     @staticmethod
-    def _get_filepaths_from_tile_stack_ids(tile_ids, stack_ids, filename_class, dirpath, tile_dimension='tile_id',
-                                           stack_dimension='layer_id', stack_groups=None, fn_groups_map=None,
-                                           def_fields=None):
+    def _get_filepaths_from_tile_stack_ids(tile_ids, stack_ids, filename_class, dirpath, ext='.nc',
+                                           tile_dimension='tile_id', stack_dimension='layer_id',
+                                           fn_map=None, def_fields=None,
+                                           stack_groups=None, fn_groups_map=None):
+        fn_map = {} if fn_map is None else fn_map
         fn_groups_map = {} if fn_groups_map is None else fn_groups_map
         def_fields = {} if def_fields is None else def_fields
         if filename_class is None:
@@ -953,25 +963,27 @@ class DataCubeWriter(DataCube):
                 (tile_dimension, {})])
             filename_class = create_fn_class(fields_def)
 
+        stack_ids_aligned = []
         tile_ids_aligned = []
         filepaths = []
-        for t, tile_id in enumerate(tile_ids):
-            for s, stack_id in enumerate(stack_ids):
+        for tile_id in tile_ids:
+            for stack_id in stack_ids:
                 fields = dict()
-                fields[tile_dimension] = tile_id
+                fields[fn_map.get(tile_dimension, tile_dimension)] = tile_id
                 fields.update(def_fields)
                 if stack_groups is not None:
-                    group_id = stack_groups[s]
-                    fields.update({stack_dimension: group_id})
+                    group_id = stack_groups[stack_id]
+                    fields.update({fn_map.get(stack_dimension, stack_dimension): group_id})
                     fields.update(fn_groups_map.get(group_id))
                 else:
-                    fields.update({stack_dimension: stack_id})
+                    fields.update({fn_map.get(stack_dimension, stack_dimension): stack_id})
 
-                filename = str(filename_class(fields, ext=format))
+                filename = str(filename_class(fields, ext=ext, convert=True))
                 filepaths.append(os.path.join(dirpath, filename))
+                stack_ids_aligned.append(stack_id)
                 tile_ids_aligned.append(tile_id)
 
-        return filepaths
+        return filepaths, stack_ids_aligned, tile_ids_aligned
 
     def write(self, data, apply_tiling=False, data_variables=None, encoder=None, encoder_kwargs=None, overwrite=False,
               unlimited_dims=None, **kwargs):
@@ -984,3 +996,4 @@ class DataCubeWriter(DataCube):
         self._raster_data.export(apply_tiling=apply_tiling, data_variables=data_variables, encoder=encoder,
                                  encoder_kwargs=encoder_kwargs, overwrite=overwrite, unlimited_dims=unlimited_dims,
                                  **kwargs)
+

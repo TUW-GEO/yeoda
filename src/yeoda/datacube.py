@@ -46,10 +46,11 @@ RASTER_DATA_CLASS = {'.tif': (GeoTiffReader, GeoTiffWriter),
 PROC_OBJS = {}
 
 
-def parse_init(filepaths, fn_class, file_class, fn_dims, md_dims, md_decoder, tmp_dirpath):
+def parse_init(filepaths, fn_class, file_class, fc_kwargs, fn_dims, md_dims, md_decoder, tmp_dirpath):
     PROC_OBJS['filepaths'] = filepaths
     PROC_OBJS['filename_class'] = fn_class
     PROC_OBJS['file_class'] = file_class
+    PROC_OBJS['file_class_kwargs'] = fc_kwargs
     PROC_OBJS['fn_dims'] = fn_dims
     PROC_OBJS['md_dims'] = md_dims
     PROC_OBJS['md_decoder'] = md_decoder
@@ -60,6 +61,7 @@ def parse_filepath(slice_proc):
     filepaths = PROC_OBJS['filepaths']
     fn_class = PROC_OBJS['filename_class']
     file_class = PROC_OBJS['file_class']
+    file_class_kwargs = PROC_OBJS['file_class_kwargs']
     fn_dims = PROC_OBJS['fn_dims']
     md_dims = PROC_OBJS['md_dims']
     md_decoder = PROC_OBJS['md_decoder']
@@ -82,7 +84,7 @@ def parse_filepath(slice_proc):
 
         if use_metadata:
             try:
-                with file_class(filepath, mode='r') as file:
+                with file_class(filepath, mode='r', **file_class_kwargs) as file:
                     for dim in md_dims:
                         fn_dict[dim][i] = md_decoder[dim](file.metadata.get(dim, None))
             except:
@@ -365,8 +367,9 @@ class DataCube(metaclass=abc.ABCMeta):
         name = name if name is not None else self._raster_data._file_dim
         min_time, max_time = min(self.file_register[name]), max(self.file_register[name])
         time_ranges = pd.date_range(min_time, max_time, freq=time_freq).union([min_time, max_time])
-        expressions = [lambda x, i=i: (x >= time_ranges[i]) & (x <= time_ranges[i + 1])
-                       for i in range(len(time_ranges) - 1)]
+        expressions = [lambda x: (x >= time_ranges[0]) & (x <= time_ranges[1])]
+        expressions += [lambda x, i=i: (x > time_ranges[i]) & (x <= time_ranges[i + 1])
+                        for i in range(1, len(time_ranges) - 1)]
 
         return [dc for dc in self.split_by_dimension(expressions, name=name) if not dc.is_empty]
 
@@ -755,15 +758,18 @@ class DataCube(metaclass=abc.ABCMeta):
 
 
 class DataCubeReader(DataCube):
-    def __init__(self, file_register, mosaic, stack_dimension='layer_id', tile_dimension='tile_id', **kwargs):
+    def __init__(self, file_register, mosaic, stack_dimension='layer_id', tile_dimension='tile_id',
+                 **kwargs):
         ref_filepath = file_register['filepath'].iloc[0]
-        reader_class = RASTER_DATA_CLASS[os.path.splitext(ref_filepath)[-1]][0]
+        ext = os.path.splitext(ref_filepath)[-1]
+        reader_class = RASTER_DATA_CLASS[ext][0]
         reader = reader_class(file_register, mosaic, stack_dimension=stack_dimension, tile_dimension=tile_dimension,
                               **kwargs)
         super().__init__(reader)
 
     @classmethod
-    def from_filepaths(cls, filepaths, filename_class, mosaic=None, tile_class=Tile, dimensions=None,
+    def from_filepaths(cls, filepaths, filename_class, mosaic=None, tile_class=Tile, sref=None, file_class=None,
+                       file_class_kwargs=None, dimensions=None,
                        tile_dimension='tile', stack_dimension='time', use_metadata=False, md_decoder=None, n_cores=1,
                        **kwargs) -> "DataCubeReader":
         """
@@ -783,13 +789,18 @@ class DataCubeReader(DataCube):
         """
         file_register = cls._get_file_register_from_files(filepaths, filename_class, dimensions=dimensions,
                                                           n_cores=n_cores, use_metadata=use_metadata,
-                                                          md_decoder=md_decoder)
+                                                          md_decoder=md_decoder, file_class=file_class,
+                                                          file_class_kwargs=file_class_kwargs)
 
         if tile_dimension in file_register.columns and mosaic is None:
             tiles = cls._get_tiles_from_file_register(file_register, tile_class=tile_class,
-                                                       tile_dimension=tile_dimension)
+                                                      tile_dimension=tile_dimension, sref=sref, file_class=file_class,
+                                                      file_class_kwargs=file_class_kwargs)
         else:
-            tiles, tile_ids = cls._get_tiles_and_ids_from_files(filepaths, tile_class=tile_class, mosaic=mosaic)
+            tiles, tile_ids = cls._get_tiles_and_ids_from_files(filepaths, tile_class=tile_class, mosaic=mosaic,
+                                                                sref=sref,
+                                                                file_class=file_class,
+                                                                file_class_kwargs=file_class_kwargs)
             file_register[tile_dimension] = tile_ids
 
         if mosaic is None:
@@ -799,12 +810,15 @@ class DataCubeReader(DataCube):
             stack_ids = cls._get_stack_ids_from_file_register(file_register, tile_dimension=tile_dimension)
             file_register[stack_dimension] = stack_ids
 
-        return cls(file_register, mosaic, stack_dimension=stack_dimension, tile_dimension=tile_dimension, **kwargs)
+        return cls(file_register, mosaic, stack_dimension=stack_dimension, tile_dimension=tile_dimension,
+                   file_class=file_class, file_class_kwargs=file_class_kwargs, **kwargs)
 
     @staticmethod
     def _get_file_register_from_files(filepaths, filename_class, dimensions=None, n_cores=1,
-                                      use_metadata=False, md_decoder=None):
+                                      use_metadata=False, md_decoder=None, file_class=None,
+                                      file_class_kwargs=None):
         md_decoder = {} if md_decoder is None else md_decoder
+        file_class_kwargs = {} if file_class_kwargs is None else file_class_kwargs
         n_files = len(filepaths)
         slices = DataCubeReader._get_file_chunks(n_files, n_cores)
         ref_filepath = filepaths[0]
@@ -814,10 +828,10 @@ class DataCubeReader(DataCube):
         except:
             fn_dims = []
         md_dims = [] if not use_metadata else DataCubeReader._get_dims_from_md(ref_filepath, dimensions=dimensions)
-        file_class = FILE_CLASS[os.path.splitext(ref_filepath)[-1]]
+        file_class = FILE_CLASS[os.path.splitext(ref_filepath)[-1]] if file_class is None else file_class
         tmp_dirpath = mkdtemp()
-        with Pool(n_cores, initializer=parse_init, initargs=(filepaths, filename_class, file_class, fn_dims, md_dims,
-                                                             md_decoder, tmp_dirpath)) as p:
+        with Pool(n_cores, initializer=parse_init, initargs=(filepaths, filename_class, file_class, file_class_kwargs,
+                                                             fn_dims, md_dims, md_decoder, tmp_dirpath)) as p:
             p.map(parse_filepath, slices)
 
         df_filepaths = glob.glob(os.path.join(tmp_dirpath, "*.df"))
@@ -844,8 +858,8 @@ class DataCubeReader(DataCube):
         return fn_dims
 
     @staticmethod
-    def _get_dims_from_md(filepath, dimensions=None):
-        file_class = FILE_CLASS[os.path.splitext(filepath)[1]]
+    def _get_dims_from_md(filepath, dimensions=None, file_class=None):
+        file_class = FILE_CLASS[os.path.splitext(filepath)[1]] if file_class is None else file_class
         md_dims = []
         try:
             with file_class(filepath, mode='r') as file:
@@ -859,21 +873,25 @@ class DataCubeReader(DataCube):
         return md_dims
 
     @staticmethod
-    def _get_tiles_from_file_register(file_register, tile_class=Tile, tile_dimension='tile_id') -> list:
+    def _get_tiles_from_file_register(file_register, tile_class=Tile, tile_dimension='tile_id', sref=None,
+                                      file_class=None, file_class_kwargs=None) -> list:
         tiles = []
         for tile_id, tile_group in file_register.groupby(by=tile_dimension):
             ref_filepath = tile_group['filepath'].iloc[0]
-            tile = DataCubeReader._get_tile_from_file(ref_filepath, tile_class=tile_class, tile_id=tile_id)
+            tile = DataCubeReader._get_tile_from_file(ref_filepath, tile_class=tile_class, tile_id=tile_id, sref=sref,
+                                                      file_class=file_class, file_class_kwargs=file_class_kwargs)
             tiles.append(tile)
         return tiles
 
     @staticmethod
-    def _get_tiles_and_ids_from_files(filepaths, tile_class=Tile, mosaic=None):
+    def _get_tiles_and_ids_from_files(filepaths, tile_class=Tile, mosaic=None, sref=None, file_class=None,
+                                      file_class_kwargs=None):
         tile_ids = []
         tiles = []
         tile_id = 0
         for filepath in filepaths:
-            tile = DataCubeReader._get_tile_from_file(filepath, tile_class=tile_class, tile_id=str(tile_id))
+            tile = DataCubeReader._get_tile_from_file(filepath, tile_class=tile_class, tile_id=str(tile_id), sref=sref,
+                                                      file_class=file_class, file_class_kwargs=file_class_kwargs)
             if mosaic is None:
                 curr_tile_id = find_congruent_tile_id_from_tiles(tile, tiles)
             else:
@@ -887,13 +905,16 @@ class DataCubeReader(DataCube):
         return tiles, tile_ids
 
     @staticmethod
-    def _get_tile_from_file(filepath, tile_class=Tile, tile_id='0'):
-        file_class = FILE_CLASS[os.path.splitext(filepath)[-1]]
-        with file_class(filepath, 'r') as f:
+    def _get_tile_from_file(filepath, tile_class=Tile, tile_id='0', sref=None, file_class=None,
+                            file_class_kwargs=None):
+        file_class_kwargs = {} if file_class_kwargs is None else file_class_kwargs
+        file_class = FILE_CLASS[os.path.splitext(filepath)[-1]] if file_class is None else file_class
+        with file_class(filepath, 'r', **file_class_kwargs) as f:
             sref_wkt = f.sref_wkt
             geotrans = f.geotrans
             n_rows, n_cols = f.raster_shape
-        return tile_class(n_rows, n_cols, sref=SpatialRef(sref_wkt), geotrans=geotrans, name=tile_id)
+        sref = sref if sref_wkt is None else SpatialRef(sref_wkt)
+        return tile_class(n_rows, n_cols, sref=sref, geotrans=geotrans, name=tile_id)
 
     @staticmethod
     def _get_stack_ids_from_file_register(file_register, tile_dimension='tile_id'):
@@ -924,7 +945,8 @@ class DataCubeWriter(DataCube):
     @classmethod
     def from_data(cls, data, dirpath, filename_class=None, fn_map=None, def_fields=None,
                   stack_groups=None, fn_groups_map=None,
-                  ext='.nc', mosaic=None, stack_dimension='layer_id', tile_dimension='tile_id', **kwargs) -> "DataCubeWriter":
+                  ext='.nc', mosaic=None, stack_dimension='layer_id', tile_dimension='tile_id',
+                  **kwargs) -> "DataCubeWriter":
 
         writer_class = RASTER_DATA_CLASS[ext][1]
         if mosaic is None:
@@ -947,7 +969,8 @@ class DataCubeWriter(DataCube):
         file_register = pd.DataFrame(fr_dict)
 
         return cls(mosaic, file_register=file_register, data=data,  ext=ext,
-                   stack_dimension=stack_dimension, tile_dimension=tile_dimension, **kwargs)
+                   stack_dimension=stack_dimension, tile_dimension=tile_dimension,
+                   **kwargs)
 
     @staticmethod
     def _get_filepaths_from_tile_stack_ids(tile_ids, stack_ids, filename_class, dirpath, ext='.nc',
@@ -985,15 +1008,15 @@ class DataCubeWriter(DataCube):
 
         return filepaths, stack_ids_aligned, tile_ids_aligned
 
-    def write(self, data, apply_tiling=False, data_variables=None, encoder=None, encoder_kwargs=None, overwrite=False,
+    def write(self, data, use_mosaic=False, data_variables=None, encoder=None, encoder_kwargs=None, overwrite=False,
               unlimited_dims=None, **kwargs):
-        self._raster_data.write(data, apply_tiling=apply_tiling, data_variables=data_variables, encoder=encoder,
+        self._raster_data.write(data, use_mosaic=use_mosaic, data_variables=data_variables, encoder=encoder,
                                 encoder_kwargs=encoder_kwargs, overwrite=overwrite, unlimited_dims=unlimited_dims,
                                 **kwargs)
 
-    def export(self, apply_tiling=False, data_variables=None, encoder=None, encoder_kwargs=None, overwrite=False,
-              unlimited_dims=None, **kwargs):
-        self._raster_data.export(apply_tiling=apply_tiling, data_variables=data_variables, encoder=encoder,
+    def export(self, use_mosaic=False, data_variables=None, encoder=None, encoder_kwargs=None, overwrite=False,
+               unlimited_dims=None, **kwargs):
+        self._raster_data.export(use_mosaic=use_mosaic, data_variables=data_variables, encoder=encoder,
                                  encoder_kwargs=encoder_kwargs, overwrite=overwrite, unlimited_dims=unlimited_dims,
                                  **kwargs)
 

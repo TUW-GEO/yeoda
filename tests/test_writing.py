@@ -157,7 +157,7 @@ def test_single_nc_tiling(tmp_path_factory, two_var_mosaic_ds, tiles, geom_bbox_
                                          fn_map={'time': 'datetime_1'},
                                          stack_groups=stack_groups,
                                          fn_groups_map={0: {'datetime_1': min_time, 'datetime_2': max_time}})
-    dc_writer.export(apply_tiling=True)
+    dc_writer.export(use_mosaic=True)
     dc_writer.close()
 
     assert len(os.listdir(tmp_dirpath)) == len(mosaic.tiles)

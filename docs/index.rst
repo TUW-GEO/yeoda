@@ -2,8 +2,14 @@
 yeoda
 =====
 
-*yeoda* stands for **y**\ our **e**\ arth **o**\ bservation **d**\ ata **a**\ ccess and provides lower and higher-level data cube
-classes to work with well-defined and structured earth observation data. These data cubes allow to filter, split and load data independently from the way the data is structured on the hard disk. Once the data structure is known to *yeoda*, it offers a user-friendly interface to access the data with the aforementioned operations.
+*yeoda* stands for **y**\ our **e**\ arth **o**\ bservation **d**\ ata **a**\ ccess and provides datacube
+classes to work with well-defined and structured earth observation data.
+*yeoda* offers two basic datacube classes, `DataCubeReader` and `DataCubeWriter`. Both inherit from `DataCube`, which consists of the following essential parts: comprises all necessary methods to filter, select or subset the internal file register or loaded data.
+
+A common scenario is that you have a list of geospatial files, which are split across space and/or time.
+*yeoda* offers a lot of flexibility in terms reading and writing from and to different data formats, e.g. you can read a stack of GeoTIFF files and write a single NetCDF file or vice versa.
+
+These data cubes allow to filter, split and load data independently from the way the data is structured on the hard disk. Once the data structure is known to *yeoda*, it offers a user-friendly interface to access the data with the aforementioned operations.
 Internally, the package relies on functionalities provided by `geopathfinder <https://github.com/TUW-GEO/geopathfinder>`_
 (filepath/filename and folder structure handling library), `veranda <https://github.com/TUW-GEO/veranda>`_ (IO classes and higher-level data structure classes for vector and raster data)
 and `geospade <https://github.com/TUW-GEO/geospade>`_ (raster and vector geometry definitions and operations).

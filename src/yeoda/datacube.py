@@ -1441,9 +1441,9 @@ class DataCubeWriter(DataCube):
             List of stack IDs/names corresponding to each entry in `filepaths`.
 
         """
-        fn_map = {} if fn_map is None else fn_map
-        fn_groups_map = {} if fn_groups_map is None else fn_groups_map
-        def_fields = {} if def_fields is None else def_fields
+        fn_map = fn_map or dict()
+        fn_groups_map = fn_groups_map or dict()
+        def_fields = def_fields or dict()
         if fn_class is None:
             fields_def = dict([
                 (stack_dimension, {}),

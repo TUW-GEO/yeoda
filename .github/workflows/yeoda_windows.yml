@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ['3.7']
+        python-version: ['3.8']
         os: ['windows-latest']
 
     steps:
@@ -29,6 +29,8 @@ jobs:
           miniconda-version: "latest"
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
+          mamba-version: "*"
+          channels: conda-forge,defaults
           environment-file: conda_env.yml
           activate-environment: yeoda
           auto-activate-base: false

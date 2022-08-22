@@ -23,6 +23,7 @@ Contents
 .. toctree::
    :maxdepth: 2
 
+   General usage <notebooks/general_usage.ipynb>
    Examples <notebooks/feature_examples.ipynb>
    Installation <install>
    Module Reference <api/modules>

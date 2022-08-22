@@ -9,6 +9,5 @@ dependencies:
   - cartopy
   - pip
   - pip:
-    - veranda
-    - geopathfinder
-    - deprecation
+    - git+https://github.com/TUW-GEO/veranda.git
+    - git+https://github.com/TUW-GEO/geopathfinder.git@add_creator_yeodafilename

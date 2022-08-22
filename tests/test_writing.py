@@ -1,13 +1,9 @@
 import os
-
 import pytest
-import datetime
 import numpy as np
 import pandas as pd
 import xarray as xr
 from geospade.raster import MosaicGeometry
-from geospade.raster import Tile
-from geospade.crs import SpatialRef
 from geospade.tools import any_geom2ogr_geom
 from yeoda.datacube import DataCubeWriter
 from yeoda.datacube import DataCubeReader
@@ -53,7 +49,7 @@ def test_gt_multi_bands(tmp_path_factory, two_var_tile_ds, tiles):
     mosaic = MosaicGeometry.from_tile_list(tiles[0:1])
     tmp_dirpath = str(tmp_path_factory.mktemp('gt_multi_bands'))
     dc_writer = DataCubeWriter.from_data(two_var_tile_ds, tmp_dirpath, mosaic=mosaic,
-                                         filename_class=YeodaFilename, ext='.tif', def_fields={'var_name': 'MVAR'},
+                                         fn_class=YeodaFilename, ext='.tif', def_fields={'var_name': 'MVAR'},
                                          stack_dimension='time', tile_dimension='tile_name',
                                          fn_map={'time': 'datetime_1'})
     dc_writer.export()
@@ -74,13 +70,13 @@ def test_gt_multi_vars(tmp_path_factory, two_var_tile_ds, tiles):
     mosaic = MosaicGeometry.from_tile_list(tiles[0:1])
     tmp_dirpath = str(tmp_path_factory.mktemp('gt_multi_vars'))
     dc_writer_var1 = DataCubeWriter.from_data(two_var_tile_ds[['VAR1']], tmp_dirpath, mosaic=mosaic,
-                                              filename_class=YeodaFilename, ext='.tif', def_fields={'var_name': 'VAR1'},
+                                              fn_class=YeodaFilename, ext='.tif', def_fields={'var_name': 'VAR1'},
                                               stack_dimension='time', tile_dimension='tile_name',
                                               fn_map={'time': 'datetime_1'})
     dc_writer_var1.export()
     dc_writer_var1.close()
     dc_writer_var2 = DataCubeWriter.from_data(two_var_tile_ds[['VAR2']], tmp_dirpath, mosaic=mosaic,
-                                              filename_class=YeodaFilename, ext='.tif', def_fields={'var_name': 'VAR2'},
+                                              fn_class=YeodaFilename, ext='.tif', def_fields={'var_name': 'VAR2'},
                                               stack_dimension='time', tile_dimension='tile_name',
                                               fn_map={'time': 'datetime_1'})
     dc_writer_var2.export()
@@ -92,8 +88,9 @@ def test_gt_multi_vars(tmp_path_factory, two_var_tile_ds, tiles):
     ref_timestamp = pd.Timestamp(two_var_tile_ds['time'].data[0]).to_pydatetime()
     ref_ds = two_var_tile_ds.sel({'time': [ref_timestamp]})
     dimensions = ['time', 'tile_name', 'var_name']
-    with DataCubeReader.from_filepaths(dc_writer.filepaths, YeodaFilename, mosaic=mosaic, dimensions=dimensions,
-                                       stack_dimension='time', tile_dimension='tile_name') as dc_reader:
+    with DataCubeReader.from_filepaths(dc_writer.filepaths, fn_class=YeodaFilename, mosaic=mosaic,
+                                       dimensions=dimensions, stack_dimension='time', tile_dimension='tile_name') \
+            as dc_reader:
         dc_reader.select_by_dimension(lambda t: t == ref_timestamp, name='time', inplace=True)
         dc_reader_var1 = dc_reader.select_by_dimension(lambda v: v == 'VAR1', name='var_name')
         dc_reader_var1.read(bands=1, band_names='VAR1')
@@ -107,7 +104,7 @@ def test_multi_nc(tmp_path_factory, two_var_tile_ds, tiles):
     mosaic = MosaicGeometry.from_tile_list(tiles[0:1])
     tmp_dirpath = str(tmp_path_factory.mktemp('nc_multi'))
     dc_writer = DataCubeWriter.from_data(two_var_tile_ds, tmp_dirpath, mosaic=mosaic,
-                                         filename_class=YeodaFilename, ext='.nc', def_fields={'var_name': 'MVAR'},
+                                         fn_class=YeodaFilename, ext='.nc', def_fields={'var_name': 'MVAR'},
                                          stack_dimension='time', tile_dimension='tile_name',
                                          fn_map={'time': 'datetime_1'})
     dc_writer.export()
@@ -130,7 +127,7 @@ def test_single_nc(tmp_path_factory, two_var_tile_ds, tiles):
     min_time, max_time = min(two_var_tile_ds['time'].data), max(two_var_tile_ds['time'].data)
     stack_groups = {ts: 0 for ts in two_var_tile_ds['time'].data}
     dc_writer = DataCubeWriter.from_data(two_var_tile_ds, tmp_dirpath, mosaic=mosaic,
-                                         filename_class=YeodaFilename, ext='.nc', def_fields={'var_name': 'MVAR'},
+                                         fn_class=YeodaFilename, ext='.nc', def_fields={'var_name': 'MVAR'},
                                          stack_dimension='time', tile_dimension='tile_name',
                                          fn_map={'time': 'datetime_1'},
                                          stack_groups=stack_groups,
@@ -139,7 +136,7 @@ def test_single_nc(tmp_path_factory, two_var_tile_ds, tiles):
     dc_writer.close()
 
     assert len(os.listdir(tmp_dirpath)) == 1
-    with DataCubeReader.from_filepaths(dc_writer.filepaths, YeodaFilename, mosaic,
+    with DataCubeReader.from_filepaths(dc_writer.filepaths, fn_class=YeodaFilename, mosaic=mosaic,
                                        stack_dimension='group_id', tile_dimension='tile_name') as dc_reader:
         dc_reader.read()
         assert np.equal(dc_reader.data_view['VAR1'].data, two_var_tile_ds['VAR1'].data).all()
@@ -152,7 +149,7 @@ def test_single_nc_tiling(tmp_path_factory, two_var_mosaic_ds, tiles, geom_bbox_
     min_time, max_time = min(two_var_mosaic_ds['time'].data), max(two_var_mosaic_ds['time'].data)
     stack_groups = {ts: 0 for ts in two_var_mosaic_ds['time'].data}
     dc_writer = DataCubeWriter.from_data(two_var_mosaic_ds, tmp_dirpath, mosaic=mosaic,
-                                         filename_class=YeodaFilename, ext='.nc', def_fields={'var_name': 'MVAR'},
+                                         fn_class=YeodaFilename, ext='.nc', def_fields={'var_name': 'MVAR'},
                                          stack_dimension='time', tile_dimension='tile_name',
                                          fn_map={'time': 'datetime_1'},
                                          stack_groups=stack_groups,
@@ -161,7 +158,7 @@ def test_single_nc_tiling(tmp_path_factory, two_var_mosaic_ds, tiles, geom_bbox_
     dc_writer.close()
 
     assert len(os.listdir(tmp_dirpath)) == len(mosaic.tiles)
-    with DataCubeReader.from_filepaths(dc_writer.filepaths, YeodaFilename, mosaic,
+    with DataCubeReader.from_filepaths(dc_writer.filepaths, fn_class=YeodaFilename, mosaic=mosaic,
                                        stack_dimension='group_id', tile_dimension='tile_name') as dc_reader:
         dc_reader.select_polygon(geom_bbox_crossing_tiles, inplace=True)
         dc_reader.read()

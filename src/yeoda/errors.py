@@ -1,48 +1,17 @@
-import pprint
-
-
-class IOClassNotFound(Exception):
-    """
-    Class to handle exceptions thrown by an unavailable IO map/IO class necessary to read a specific file type.
-    """
-
-    def __init__(self, io_map, file_type):
-        """
-        Constructor of `IOClassNotFound`.
-
-        Parameters
-        ----------
-        io_map : dictionary
-            Map that represents the relation of an EO file type (e.g. GeoTIFF) with an appropriate reader.
-        file_type : str
-            File type, e.g. 'GeoTIFF'.
-        """
-
-        self.message = "The file type '{}' can not be related to any IO class. " \
-                       "The available IO class are: \n {}".format(file_type, pprint.pformat(io_map))
-
-    def __str__(self):
-        """ String representation of this class. """
-
-        return self.message
-
-
 class FileTypeUnknown(Exception):
-    """ Class to handle exceptions thrown by unknown file types."""
+    """ Class to handle exceptions thrown by unknown file types/extensions."""
 
-    def __init__(self, file_type):
+    def __init__(self, ext):
         """
         Constructor of `FileTypeUnknown`.
 
         Parameters
         ----------
-        io_map : dictionary
-            Map that represents the relation of an EO file type (e.g. GeoTIFF) with an appropriate reader.
-        file_type : str
-            File type, e.g. 'GeoTIFF'.
+        ext : str
+            File extension, e.g. '.nc'.
         """
 
-        self.message = "The file type '{}' is not known.".format(file_type)
+        self.message = "The file type/extension '{}' is not known.".format(ext)
 
     def __str__(self):
         """ String representation of this class. """
@@ -51,7 +20,7 @@ class FileTypeUnknown(Exception):
 
 
 class DimensionUnkown(KeyError):
-    """ Class to handle exceptions thrown by unknown dimensions/columns in the data cube inventory."""
+    """ Class to handle exceptions thrown by unknown dimensions/columns in the file register of the datacube."""
 
     def __init__(self, dimension_name):
         """
@@ -60,7 +29,7 @@ class DimensionUnkown(KeyError):
         Parameters
         ----------
         dimension_name : str
-            Column/Dimension name of the data cube inventory.
+            Column/Dimension name of the file register of the datacube.
         """
 
         self.message = "Dimension {} is unknown. Please add it to the data cube.".format(dimension_name)

@@ -7,7 +7,7 @@ from geopathfinder.naming_conventions.yeoda_naming import YeodaFilename
 @pytest.fixture
 def dc_reader(gt_filepaths):
     dimensions = ['time', 'var_name', 'band', 'tile_name']
-    dc_reader = DataCubeReader.from_filepaths(gt_filepaths, YeodaFilename, dimensions=dimensions,
+    dc_reader = DataCubeReader.from_filepaths(gt_filepaths, fn_class=YeodaFilename, dimensions=dimensions,
                                               stack_dimension='time', tile_dimension='tile_name')
     return dc_reader
 

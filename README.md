@@ -13,31 +13,20 @@
 ## Contents
 
   * [Description](#description)
-  * [Limitations and outlook](#limitations-and-outlook)
   * [Installation](#installation)
     * [Pip](#pip)
     * [Conda](#conda)
-  * [Examples](#examples)
-    * [Loading data from GeoTIFF files](#loading-data-from-geotiff-files)
-    * [Read raster data by pixel coordinates](#read-raster-data-by-pixel-coordinates)
-    * [Read raster data by bounding box](#read-raster-data-by-bounding-box)
-    * [Running the examples jupyter notebook](#running-the-examples-jupyter-notebook)
   * [Contribution](#contribution)
   * [Citation](#citation)<!-- endToc -->
 
 ## Description
-*yeoda* stands for **y**our **e**arth **o**bservation **d**ata **a**ccess and provides lower and higher-level data cube 
-classes to work with well-defined and structured earth observation data. These data cubes allow to filter, split and load data independently from the way the data is structured on the hard disk. Once the data structure is known to *yeoda*, it offers a user-friendly interface to access the data with the aforementioned operations.
-Internally, the package relies on functionalities provided by [*geopathfinder*](https://github.com/TUW-GEO/geopathfinder) 
+*yeoda* stands for **y**our **e**arth **o**bservation **d**ata **a**ccess and provides datacube classes 
+for reading and writing well-defined and structured earth observation data. These datacubes allow to filter, select, split, read and write data independently from the way the data is structured on disk.
+Internally, *yeoda* relies on functionalities provided by [*geopathfinder*](https://github.com/TUW-GEO/geopathfinder) 
 (filepath/filename and folder structure handling library), [*veranda*](https://github.com/TUW-GEO/veranda) (IO classes and higher-level data structure classes for vector and raster data)
-and [*geospade*](https://github.com/TUW-GEO/geospade) (raster and vector geometry definitions and operations).
-Moreover, another very important part of *yeoda* is that it deals with pre-defined grids like the [*Equi7Grid*](https://github.com/TUW-GEO/Equi7Grid) or the [*LatLonGrid*](https://github.com/TUW-GEO/latlongrid).
-These grid packages can simplify and speed up spatial operations to identify tiles/files of interest (e.g, bounding box request by a user).
+and [*geospade*](https://github.com/TUW-GEO/geospade) (raster and vector geometry/mosaic definitions and operations).
 
-## Limitations and outlook
-At the moment the functionality of *yeoda* is limited in terms of flexibility with different file types, bands and 
-tiles, e.g. you can only load data from one tile and one band. This will change in the future by allowing to load data also independently from tile boundaries, bands and file types.
-Most changes will take place in *veranda* and *geospade*, so the actual interface to the data given by *yeoda* should stay approximately the same.
+For more details about *yeoda*'s functionality and many use case examples, please check out *yeoda*'s RTD documentation!
 
 ## Installation
 The package can be either installed via pip or if you solely want to work with *yeoda* or contribute, we recommend installing
@@ -52,7 +41,9 @@ pip install yeoda
 Thus, for a fresh setup, an existing environment with the conda dependencies listed in ``conda_env.yml`` is expected.
 To create such an environment, you can run:
 ```
-conda create -n "yeoda" -c conda-forge python=3.7 gdal=3.0.2 geopandas cartopy
+conda create -n "yeoda" -c conda-forge python=3.8 mamba
+conda activate yeoda
+mamba install -c conda-forge python=3.8 gdal geopandas cartopy
 ```
 
 ### Conda
@@ -64,7 +55,7 @@ like system. Miniconda will be installed into ``$HOME/miniconda``.
 wget http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
 bash miniconda.sh -b -p $HOME/miniconda
 export PATH="$HOME/miniconda/bin:$PATH"
-conda env create -f conda_env.yml
+mamba env create -f conda_env.yml
 source activate yeoda
 ```
 This script adds ``$HOME/miniconda/bin`` temporarily to the ``PATH`` to do this
@@ -87,72 +78,6 @@ After that you should be able to run
 python setup.py test
 ```
 to run the test suite.
-
-## Examples
-This section demonstrates basic usage of a *yeoda* datacube, specifically how to load raster data and read it using pixel 
-coordinates or geometry definitions.
-
-### Loading data from GeoTIFF files
-You can create a datacube from a collection of GeoTIFF files, by passing them into the constructor of the `EODataCube` and
-specifying the type of naming convention you want to use via the `filename_class` parameters. This can take any 
-`SmartFilename` class, see [*geopathfinder*](https://github.com/TUW-GEO/geopathfinder) for details. The `dimensions` parameter
-defines the columns you want to read into the datacube's inventory and the values for these are usually parsed from the
-`SmartFilename`. The `sdim_name` defines the spatial dimension.
-
-<!-- snippet: create_and_filter_datacube -->
-<a id='snippet-create_and_filter_datacube'></a>
-```py
-dc = EODataCube(filepaths=filepaths, filename_class=SgrtFilename,
-                dimensions=['time', 'var_name', 'pol', 'tile_name', 'orbit_direction'], sdim_name="tile_name")
-
-dc.filter_by_dimension('VV', name='pol', inplace=True)
-dc.filter_by_dimension('SIG0', name='var_name', inplace=True)
-dc.filter_by_dimension('D', name='orbit_direction', inplace=True)
-dc.filter_spatially_by_tilename('E042N012T6', inplace=True, use_grid=False)
-```
-<sup><a href='/tests/test_loading.py#L82-L90' title='Snippet source file'>snippet source</a> | <a href='#snippet-create_and_filter_datacube' title='Start of snippet'>anchor</a></sup>
-<!-- endSnippet -->
-
-### Read raster data by pixel coordinates
-The datacube's `load_by_pixels` allows you to read raster data from specifying a region of interest in pixels. It will
-automatically crop it the requested size and handle tile boundaries. The `dtype` parameter determines the data type the
-function will return, in this case a numpy array (see [numpy](https://numpy.org/) for details).
-
-<!-- snippet: data_cube_load_numpy_by_pixels -->
-<a id='snippet-data_cube_load_numpy_by_pixels'></a>
-```py
-data = dc.load_by_pixels(970, 246, row_size=10, col_size=16, dtype='numpy')
-```
-<sup><a href='/tests/test_loading.py#L275-L277' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_pixels' title='Start of snippet'>anchor</a></sup>
-<!-- endSnippet -->
-
-### Read raster data by bounding box
-Using the datacube's `load_by_geom` you can specify for instance a bounding box geometry and *yeoda* will load and 
-return the raster data covered by it. The `dtype` parameters determines the data type that will be returned, in this
-example a numpy array (see [numpy](https://numpy.org/) for details).
-
-<!-- snippet: data_cube_load_numpy_by_bbox -->
-<a id='snippet-data_cube_load_numpy_by_bbox'></a>
-```py
-bbox = [(4323250, 1309750), (4331250, 1314750)]
-data = dc.load_by_geom(bbox, dtype='numpy')
-```
-<sup><a href='/tests/test_loading.py#L426-L429' title='Snippet source file'>snippet source</a> | <a href='#snippet-data_cube_load_numpy_by_bbox' title='Start of snippet'>anchor</a></sup>
-<!-- endSnippet -->
-
-### Running the examples jupyter notebook
-
-We also provide a docker image with example data preinstalled which runs a jupyter server with our [feature example notebook](docs/notebooks/feature_examples.ipynb), 
-demonstrating the most important features of *yeoda*.
-
-```bash
-docker run --rm -it -p 8888:8888 tuwgeomrs/yeoda-doc:latest
-```
-
-Now you can navigate to `localhost:8888` in a web-browser of your choice, and try out features yourself using our example 
-data. For detailed explanation what the docker commands mean, see the [official docker documentation](https://docs.docker.com/engine/reference/run/).
-Also have a look at other docker images we provide at [docker hub](https://hub.docker.com/u/tuwgeomrs).
-
 
 ## Contribution
 We are happy if you want to contribute. Please raise an issue explaining what

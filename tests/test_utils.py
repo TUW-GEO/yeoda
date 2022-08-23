@@ -1,7 +1,3 @@
-"""
-Some small & concise tests for utility functions.
-"""
-
 from src.yeoda.utils import to_list
 
 

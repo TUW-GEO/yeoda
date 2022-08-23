@@ -3,14 +3,11 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.7
-  - gdal=3.0.2
+  - python=3.8
+  - gdal
   - geopandas
   - cartopy
   - pip
   - pip:
-    - pytileproj
-    - equi7grid
-    - veranda==0.1.0
-    - geospade
-    - geopathfinder
+    - git+https://github.com/TUW-GEO/veranda.git
+    - git+https://github.com/TUW-GEO/geopathfinder.git@add_creator_yeodafilename

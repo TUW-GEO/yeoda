@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ['3.7']
+        python-version: ['3.8']
         os: ["ubuntu-latest"]
 
     steps:
@@ -29,6 +29,8 @@ jobs:
           miniconda-version: "latest"
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
+          mamba-version: "*"
+          channels: conda-forge,defaults
           environment-file: conda_env.yml
           activate-environment: yeoda
           auto-activate-base: false
@@ -54,6 +56,7 @@ jobs:
       - name: Install package and test
         shell: bash -l {0}
         run: |
+          pip install git+https://github.com/TUW-GEO/geopathfinder.git@add_creator_yeodafilename
           pip install .
           python setup.py test
       - name: Upload Coverage

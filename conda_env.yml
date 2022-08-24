@@ -9,5 +9,5 @@ dependencies:
   - cartopy
   - pip
   - pip:
-    - git+https://github.com/TUW-GEO/veranda.git
+    - veranda
     - geopathfinder

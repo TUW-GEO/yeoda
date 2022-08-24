@@ -56,7 +56,6 @@ jobs:
       - name: Install package and test
         shell: bash -l {0}
         run: |
-          pip install git+https://github.com/TUW-GEO/geopathfinder.git@add_creator_yeodafilename
           pip install .
           python setup.py test
       - name: Upload Coverage

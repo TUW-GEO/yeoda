@@ -16,6 +16,9 @@ and `geospade <https://github.com/TUW-GEO/geospade>`_ (raster and vector geometr
 Moreover, another very important part of *yeoda* is work with pre-defined grids like the `Equi7Grid <https://github.com/TUW-GEO/Equi7Grid>`_ or the `LatLonGrid <https://github.com/TUW-GEO/latlongrid>`_.
 These grid packages can simplify and speed up spatial operations to identify tiles/files of interest (e.g, bounding box request by a user).
 
+.. image:: imgs/overview_v1.0.png
+   :width: 600
+
 
 Contents
 ========
@@ -24,7 +27,7 @@ Contents
    :maxdepth: 2
 
    General usage <notebooks/general_usage.ipynb>
-   Examples <notebooks/feature_examples.ipynb>
+   Examples <examples.rst>
    Installation <install>
    Module Reference <api/modules>
    License <license>

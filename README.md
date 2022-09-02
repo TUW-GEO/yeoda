@@ -16,6 +16,7 @@
   * [Installation](#installation)
     * [Pip](#pip)
     * [Conda](#conda)
+  * [Docker](#docker)
   * [Contribution](#contribution)
   * [Citation](#citation)<!-- endToc -->
 

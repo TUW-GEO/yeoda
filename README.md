@@ -7,7 +7,7 @@
 [![RTD](https://readthedocs.org/projects/yeoda/badge/?version=latest)](https://yeoda.readthedocs.io/en/latest/?badge=latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-*Earth Observation (EO) data, I must read.*
+*Earth Observation (EO) data, I must handle.*
 
 <!-- toc -->
 ## Contents
@@ -78,6 +78,23 @@ After that you should be able to run
 python setup.py test
 ```
 to run the test suite.
+
+## Docker
+We also provide a docker image with example data and some Jupyter Notebooks, which were used to generate *yeoda*'s documentation. 
+You can pull the image with the following command:
+
+```bash
+docker pull tuwgeomrs/yeoda:v1.0.0
+```
+
+Then, you can directly start the Jupyter server via
+
+```bash
+docker run -it -p 8888:8888 tuwgeomrs/yeoda:v1.0.0 notebook
+```
+
+Copy-paste the link including a token in a web-browser of your choice, and try out *yeoda*'s rich set of features. For detailed explanation on further docker commands, see the [official docker documentation](https://docs.docker.com/engine/reference/run/).
+Also, have a look at other docker images we provide at [docker hub](https://hub.docker.com/u/tuwgeomrs).
 
 ## Contribution
 We are happy if you want to contribute. Please raise an issue explaining what

@@ -5,7 +5,6 @@ MAINTAINER Florian Roth <florian.roth@geo.tuwien.ac.at>
 WORKDIR /opt
 
 # create conda environment
-ADD docker/yeoda-env.yml /tmp/yeoda-env.yml
 RUN conda install -c conda-forge mamba --yes
-RUN mamba env create -f /tmp/yeoda-env.yml -p /opt/conda/envs/yeoda -q
-RUN bash -c "source activate yeoda && pip install yeoda==0.3.0 -q && pip uninstall opencv-python -yq && pip install opencv-python-headless"
+RUN mamba create -p /opt/conda/envs/yeoda -c conda-forge python=3.8 -q
+RUN bash -c "source activate yeoda && mamba install -c conda-forge gdal geopandas cartopy jupyter xarray netcdf4 rioxarray dask pyproj && pip install yeoda"

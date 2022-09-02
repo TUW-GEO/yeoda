@@ -6,5 +6,8 @@ ENV PATH /opt/conda/envs/yeoda/bin:$PATH
 ENV PROJ_LIB /opt/conda/envs/yeoda/share/proj
 ENV GDAL_DATA /opt/conda/envs/yeoda/share/gdal
 
-ADD docker/entry.sh /bin/entry.sh
+ADD data/ /opt/data/
+ADD notebooks/ /opt/notebooks
+
+ADD entry.sh /bin/entry.sh
 ENTRYPOINT ["/bin/entry.sh"]
